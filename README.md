@@ -33,13 +33,14 @@ For project-local installation, add `-l`. For development, `npm ci` then `pi -e 
 | Persistent mode | `/poteto-mode`, native session entries and status; `/poteto-mode off` |
 | Independent workers | `pstack_task`: real pi RPC processes, own context/session, writable git worktrees, model roles, background completion wakes |
 | Worker control | `pstack_workers`: list, wait, cancel, steer, resume; reports and worktrees retained |
+| Custom agents | `/pstack-agents` discovery; user and trusted project Markdown definitions; model, read-only, and background defaults; saved prompt snapshots on resume |
 | Questions and task lists | `pstack_ask` single/multiple selection and text; `pstack_todos` widget and branch-aware state |
 | Long-running work | `/goal` and `/loop`, evidence-required completion, coalesced heartbeat, event-driven worker wakes |
 | History and integrations | Workspace-only `pstack_history`, tool discovery, MCP stdio/HTTP/SSE tools, resources and prompts |
 | PRs and orchestration | Full upstream Bun PR watcher, orchestration store, plan checker and decision logger |
 | Automation | Reviewed disabled configs, private token files, authenticated webhooks, signed Slack events, scheduled triggers, durable queue/log/session artifacts |
 
-[Runtime reference](docs/pi-runtime.md) · [User guide](docs/guide/README.md) · [Automation hosting and Benny](docs/automations.md)
+[Runtime reference](docs/pi-runtime.md) · [Cursor capability map](docs/cursor-parity.md) · [User guide](docs/guide/README.md) · [Automation hosting and Benny](docs/automations.md)
 
 ### Model configuration
 
