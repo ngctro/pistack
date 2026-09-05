@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { getAgentDir, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
@@ -13,10 +14,15 @@ const Server = Type.Object({
   env: Type.Optional(Type.Record(Type.String(), Type.String())),
   headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 }, { additionalProperties: false });
+const Ui = Type.Object({
+  icons: Type.Optional(StringEnum(["nerd", "ascii"] as const)),
+  motion: Type.Optional(StringEnum(["active", "off"] as const)),
+}, { additionalProperties: false });
 export const Config = Type.Object({
   models: Type.Optional(Type.Record(Type.String(), Type.Union([Type.String(), Type.Array(Type.String(), { minItems: 1 })]))),
   mcpServers: Type.Optional(Type.Record(Type.String(), Server)),
   maxWorkers: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ui: Type.Optional(Ui),
 }, { additionalProperties: false });
 export type Config = Static<typeof Config>;
 export type ServerConfig = Static<typeof Server>;

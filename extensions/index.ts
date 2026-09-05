@@ -8,7 +8,7 @@ import { output } from "./output.ts";
 import { registerWorkers, root } from "./workers.ts";
 import { registerMcp } from "./mcp.ts";
 import { registerRoutines } from "./routines.ts";
-import { toolPresentation, messagePresentation, todoWidget, type Todo } from "./ui.ts";
+import { toolPresentation, messagePresentation, todoWidget, showTodos, syncPreferences, applyWorkingIndicator, restoreWorkingIndicator, uiPreferences, type Todo } from "./ui.ts";
 
 export default function pistack(pi: ExtensionAPI) {
   pi.registerMessageRenderer("pstack", messagePresentation);
@@ -42,8 +42,12 @@ export default function pistack(pi: ExtensionAPI) {
     }
     render(ctx);
   };
-  pi.on("session_start", restore);
   pi.on("session_tree", restore);
+  pi.on("session_start", (event, ctx) => {
+    syncPreferences(readConfig());
+    restore(event, ctx);
+    applyWorkingIndicator(ctx);
+  });
   pi.on("resources_discover", () => ({ skillPaths: [join(root, "skills")] }));
   pi.on("before_agent_start", (event, ctx) => {
     pendingTick = false;
@@ -56,6 +60,29 @@ export default function pistack(pi: ExtensionAPI) {
     if (["setup-pstack", "poteto-mode"].includes(name)) continue;
     pi.registerCommand(name, { description: frontmatter.description ?? name, handler: async args => { invoke(name, args); } });
   }
+  pi.registerCommand("pstack-todos", {
+    description: "Browse session todos (read-only).",
+    handler: async (_args, ctx) => {
+      if (ctx.mode !== "tui") {
+        pi.sendMessage({ customType: "pstack", content: JSON.stringify(todos, null, 2), display: true }, { triggerTurn: false });
+        return;
+      }
+      await showTodos(ctx, () => todos);
+    },
+  });
+  pi.registerCommand("pstack-ui", {
+    description: "UI preferences: /pstack-ui icons nerd|ascii, /pstack-ui motion active|off.",
+    handler: async (args, ctx) => {
+      const [key, value] = args.trim().split(/\s+/).filter(Boolean);
+      if (!key) { notice(`icons=${uiPreferences.icons} motion=${uiPreferences.motion}`); return; }
+      const valid = (key === "icons" && (value === "nerd" || value === "ascii")) || (key === "motion" && (value === "active" || value === "off"));
+      if (!valid) throw new Error("Usage: /pstack-ui icons nerd|ascii, /pstack-ui motion active|off");
+      const config = readConfig();
+      const next = { ...config, ui: { ...config.ui, [key]: value } };
+      writeConfig(next); syncPreferences(next); applyWorkingIndicator(ctx);
+      notice(`icons=${uiPreferences.icons} motion=${uiPreferences.motion}`);
+    },
+  });
   pi.registerCommand("poteto-mode", {
     description: "Enable poteto's workflows for this session. /poteto-mode off disables them.",
     handler: async (args, ctx) => {
@@ -182,4 +209,5 @@ export default function pistack(pi: ExtensionAPI) {
     persist(); render(ctx); return output(JSON.stringify({ goal, evidence: args.evidence }));
   } });
   pi.on("session_shutdown", clearLoop);
+  pi.on("session_shutdown", (_event, ctx) => restoreWorkingIndicator(ctx));
 }

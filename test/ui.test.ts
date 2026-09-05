@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { initTheme, type Theme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { messagePresentation, safeText, toolPresentation, todoWidget, type Todo } from "../extensions/ui.ts";
+import { TodoBrowser, WorkerBrowser, indicatorOptions, messagePresentation, safeText, syncPreferences, toolPresentation, todoWidget, uiPreferences, type Todo, type UiPreferences } from "../extensions/ui.ts";
+import { Config } from "../extensions/config.ts";
+import { Value } from "typebox/value";
+import type { WorkerRecord } from "../extensions/workers.ts";
 import { output } from "../extensions/output.ts";
 
 initTheme("dark", false);
@@ -101,4 +104,105 @@ test("counts sort canonically, call titles omit empty args, expanded string deta
   assert.match(toolPresentation("pstack_workers").renderCall!({ action: "list" }, theme, context({ action: "list" })).render(80)[0], / workers list$/);
   const withStringDetails = slots.renderResult!(output(JSON.stringify(todos), "oops"), { expanded: true, isPartial: false }, theme, context()).render(1000).join("\n");
   assert.ok(!withStringDetails.includes('"oops"'));
+});
+test("todo browser selects, details, scrolls and closes within bounds", () => {
+  const rows: Todo[] = [
+    { id: "a", content: "first task", status: "pending" },
+    { id: "b", content: "second task\nwith wrapped second line that keeps going", status: "in_progress" },
+    { id: "c", content: "third task", status: "completed" },
+  ];
+  const browser = new TodoBrowser(() => rows);
+  for (const width of widths) bounded(browser.render(width, theme), width, 12);
+  assert.equal(browser.handleInput("\x1b"), "close");
+  assert.equal(browser.handleInput("\x1b[B"), "stay");
+  assert.equal(browser.handleInput("\r"), "stay");
+  const detail = browser.render(80, theme).join("\n");
+  assert.match(detail, /second task/);
+  assert.match(detail, /Line 1-/);
+  browser.handleInput("\x1b[B");
+  browser.handleInput("\x1b");
+  assert.equal(browser.render(80, theme).filter(l => l.startsWith(">")).length, 1);
+  rows.unshift({ id: "z", content: "inserted first", status: "pending" });
+  const relabeled = browser.render(80, theme).join("\n");
+  assert.match(relabeled, /second task/);
+  assert.ok(relabeled.includes(">") && relabeled.split("\n").find(l => l.startsWith(">"))!.includes("second task"));
+  assert.deepEqual(new TodoBrowser(() => []).render(40, theme), ["No todos"]);
+});
+
+test("worker browser lists, details, refreshes and reports missing files", () => {
+  const records = [
+    { ...worker, id: "aaaaaaaa-1111-2222-3333-444444444444", status: "running" },
+    { ...worker, id: "bbbbbbbb-1111-2222-3333-444444444444", status: "failed", error: "boom evidence" },
+  ] as WorkerRecord[];
+  const browser = new WorkerBrowser(() => records, () => "report line 1\nreport line 2");
+  for (const width of widths) bounded(browser.render(width, theme), width, 12);
+  assert.ok(!browser.render(40, theme).join("\n").includes("test/model"));
+  assert.ok(browser.render(80, theme).join("\n").includes("test/model"));
+  assert.equal(browser.handleInput("\x1b"), "close");
+  browser.handleInput("\x1b[B");
+  browser.handleInput("\r");
+  const detail = browser.render(80, theme).join("\n");
+  assert.match(detail, /bbbbbbbb-1111-2222-3333-444444444444/);
+  assert.match(detail, /boom evidence/);
+  assert.match(detail, /report line 1/);
+  assert.match(detail, /session\.jsonl/);
+  browser.handleInput("r");
+  browser.handleInput("\x1b");
+  records.reverse();
+  assert.ok(browser.render(80, theme).join("\n").split("\n").find(l => l.startsWith(">"))!.includes("bbbbbbbb"));
+  assert.ok(browser.render(80, theme)[1].includes("aaaaaaaa"), "list is cached until r");
+  browser.handleInput("r");
+  assert.ok(browser.render(80, theme)[1].includes("bbbbbbbb"), "r re-reads and selection follows by id");
+  const missing = new WorkerBrowser(() => [records[0]], () => { throw new Error("gone"); });
+  assert.equal(missing.handleInput("\r"), "stay");
+  assert.match(missing.render(80, theme).join("\n"), /Report unreadable/);
+  const fallback = new WorkerBrowser(() => [{ ...records[0], report: "/nope.md" } as WorkerRecord]);
+  fallback.handleInput("\r");
+  assert.match(fallback.render(80, theme).join("\n"), /Report not available yet/);
+  assert.deepEqual(new WorkerBrowser(() => []).render(40, theme), ["No workers"]);
+});
+
+test("ui preferences validate, sync and drive the working indicator", () => {
+  assert.ok(Value.Check(Config, { ui: { icons: "ascii", motion: "off" } }));
+  assert.ok(!Value.Check(Config, { ui: { icons: "emoji" } }));
+  assert.ok(!Value.Check(Config, { ui: { motion: "sometimes" } }));
+  assert.ok(Value.Check(Config, {}));
+  syncPreferences({ ui: { icons: "ascii", motion: "off" } });
+  assert.equal(uiPreferences.icons, "ascii");
+  assert.deepEqual(indicatorOptions().frames.length, 1);
+  syncPreferences({ ui: { icons: "nerd", motion: "active" } });
+  assert.equal(uiPreferences.icons, "nerd");
+  syncPreferences({ ui: { icons: "emoji", motion: "sometimes" } as unknown as Partial<UiPreferences> });
+  assert.equal(uiPreferences.icons, "nerd");
+  assert.equal(uiPreferences.motion, "active");
+  const active = indicatorOptions(theme);
+  assert.equal(active.frames.length, 10);
+  assert.equal(active.intervalMs, 200);
+});
+
+test("browsers take q/j/k, guard empty lists and clamp detail scroll", () => {
+  const empty = new TodoBrowser(() => []);
+  assert.equal(empty.handleInput("\r"), "stay");
+  assert.deepEqual(empty.render(40, theme), ["No todos"]);
+  const rows: Todo[] = [
+    { id: "a", content: "first task", status: "pending" },
+    { id: "b", content: "second task", status: "in_progress" },
+  ];
+  const browser = new TodoBrowser(() => rows);
+  browser.handleInput("j");
+  assert.ok(browser.render(80, theme).find(l => l.startsWith(">"))!.includes("second task"));
+  browser.handleInput("k");
+  assert.ok(browser.render(80, theme).find(l => l.startsWith(">"))!.includes("first task"));
+  browser.handleInput("j");
+  browser.handleInput("\r");
+  assert.equal(browser.handleInput("q"), "stay");
+  assert.equal(browser.handleInput("q"), "close");
+  const long = new TodoBrowser(() => [{ id: "x", content: Array(50).fill("line").join("\n"), status: "pending" }]);
+  long.handleInput("\r");
+  for (let i = 0; i < 60; i++) long.handleInput("j");
+  const detail = long.render(80, theme).join("\n");
+  assert.match(detail, /Line 39-50 of 50/);
+  const emptyWorkers = new WorkerBrowser(() => []);
+  assert.equal(emptyWorkers.handleInput("\r"), "stay");
+  assert.equal(emptyWorkers.handleInput("q"), "close");
 });
