@@ -7,11 +7,12 @@ import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { output } from "./output.ts";
+import { toolPresentation } from "./ui.ts";
 
 export function registerRoutines(pi: ExtensionAPI) {
   let runner: ChildProcess | undefined;
   pi.registerTool({
-    name: "pstack_routines", label: "Pstack routines",
+    ...toolPresentation("pstack_routines"), name: "pstack_routines", label: "Pstack routines",
     description: "Create/update disabled webhook or scheduled pi routines; list, enable, disable, or start/stop the local runner. Creation never enables execution. Auth tokens are generated into private files, never returned to chat. Inspect and approve the prompt before enabling. Runner defaults to localhost:8787; keep it alive with tmux/systemd for unattended runs. Slack triggers require SLACK_SIGNING_SECRET and an explicit channel. Persistent JSON configs live under the pi agent directory.",
     parameters: Type.Object({
       action: StringEnum(["list", "save", "enable", "disable", "start", "stop"]),
