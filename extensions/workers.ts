@@ -9,6 +9,7 @@ import { Type } from "typebox";
 import { modelChoices, readConfig, resolveModel } from "./config.ts";
 import { output } from "./output.ts";
 import { discoverAgents } from "./agents.ts";
+import { toolPresentation, messagePresentation } from "./ui.ts";
 
 export const root = fileURLToPath(new URL("../", import.meta.url));
 export const Task = Type.Object({
@@ -43,6 +44,7 @@ export function attachJsonLines(stream: NodeJS.ReadableStream, receive: (value: 
 }
 
 export function registerWorkers(pi: ExtensionAPI) {
+  pi.registerMessageRenderer("pstack-worker", messagePresentation);
   const workers = new Map<string, Worker>();
   let closed = false;
   const depth = Number(process.env.PISTACK_DEPTH ?? 0);
@@ -129,7 +131,7 @@ export function registerWorkers(pi: ExtensionAPI) {
     return worker;
   }
   pi.registerTool({
-    name: "pstack_task", label: "Pstack task", description: "Spawn a pi worker with independent context and a persistent session. Discover named personas via pstack_workers action=agents. Agent metadata supplies model, readonly and background defaults; otherwise background is true. Default writable workers get their own git worktree. Use local for shared-machine tasks, cwd for a prepared worktree. cloud means local worktree isolation, not a hosted VM. Models use exact provider/id; use role to select configured models. Depth 3, default 12 simultaneous workers. Returns IDs and artifact paths.", parameters: Task,
+    ...toolPresentation("pstack_task"), name: "pstack_task", label: "Pstack task", description: "Spawn a pi worker with independent context and a persistent session. Discover named personas via pstack_workers action=agents. Agent metadata supplies model, readonly and background defaults; otherwise background is true. Default writable workers get their own git worktree. Use local for shared-machine tasks, cwd for a prepared worktree. cloud means local worktree isolation, not a hosted VM. Models use exact provider/id; use role to select configured models. Depth 3, default 12 simultaneous workers. Returns IDs and artifact paths.", parameters: Task,
     async execute(_id, task, signal, _update, ctx) {
       signal?.throwIfAborted();
       const worker = await start(ctx, task);
@@ -144,7 +146,7 @@ export function registerWorkers(pi: ExtensionAPI) {
     },
   });
   pi.registerTool({
-    name: "pstack_workers", label: "Pstack workers", description: "Discover agent definitions with action=agents. List, wait for, cancel, interrupt, or resume workers. Read report/session files for full results. Resume sends a consolidated new brief into the saved worker session. Cancel all for a zero-writes stand-down; processes stop, worktrees and evidence remain.",
+    ...toolPresentation("pstack_workers"), name: "pstack_workers", label: "Pstack workers", description: "Discover agent definitions with action=agents. List, wait for, cancel, interrupt, or resume workers. Read report/session files for full results. Resume sends a consolidated new brief into the saved worker session. Cancel all for a zero-writes stand-down; processes stop, worktrees and evidence remain.",
     parameters: Type.Object({ action: StringEnum(["agents", "list", "wait", "cancel", "interrupt", "resume"]), id: Type.Optional(Type.String()), prompt: Type.Optional(Type.String()) }),
     async execute(_id, args, signal, _update, ctx) {
       if (args.action === "agents") return output(JSON.stringify(discoverAgents(ctx.cwd, ctx.isProjectTrusted()).map(({ prompt, ...metadata }) => metadata)));

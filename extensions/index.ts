@@ -8,8 +8,10 @@ import { output } from "./output.ts";
 import { registerWorkers, root } from "./workers.ts";
 import { registerMcp } from "./mcp.ts";
 import { registerRoutines } from "./routines.ts";
+import { toolPresentation, messagePresentation, todoWidget, type Todo } from "./ui.ts";
 
 export default function pistack(pi: ExtensionAPI) {
+  pi.registerMessageRenderer("pstack", messagePresentation);
   registerWorkers(pi);
   registerMcp(pi);
   registerRoutines(pi);
@@ -18,7 +20,7 @@ export default function pistack(pi: ExtensionAPI) {
   let timer: ReturnType<typeof setInterval> | undefined;
   let pendingTick = false;
   let loop: { seconds: number; prompt: string } | undefined;
-  let todos: { id: string; content: string; status: "pending" | "in_progress" | "completed" }[] = [];
+  let todos: Todo[] = [];
   const notice = (text: string) => pi.sendMessage({ customType: "pstack", content: text, display: true });
   const skillPath = (name: string) => join(root, "skills", name, "SKILL.md");
   const invoke = (name: string, args: string) => pi.sendUserMessage(`Read and follow ${skillPath(name)} in full. Resolve its relative paths from that skill directory.\n\n${args}`, { deliverAs: "followUp" });
@@ -26,7 +28,9 @@ export default function pistack(pi: ExtensionAPI) {
   const render = (ctx: ExtensionContext) => {
     if (!ctx.hasUI) return;
     ctx.ui.setStatus("pstack", [mode && "poteto", goal && "goal", loop && `loop ${loop.seconds}s`].filter(Boolean).join(" · ") || undefined);
-    ctx.ui.setWidget("pstack-todos", todos.length ? todos.map(t => `${t.status === "completed" ? "✓" : t.status === "in_progress" ? "→" : "○"} ${t.content}`) : undefined);
+    if (!todos.length) ctx.ui.setWidget("pstack-todos", undefined);
+    else if (ctx.mode === "tui") ctx.ui.setWidget("pstack-todos", (_tui, theme) => todoWidget(() => todos, theme));
+    else ctx.ui.setWidget("pstack-todos", todoWidget(() => todos).render(80));
   };
   const restore = (_event: unknown, ctx: ExtensionContext) => {
     mode = false; goal = ""; todos = [];
@@ -95,13 +99,13 @@ export default function pistack(pi: ExtensionAPI) {
       notice(`${configPath()}\n${JSON.stringify(Object.fromEntries(roles.map(r => [r, modelChoices(config, r)])), null, 2)}\nAvailable models: ${available.join(", ")}. Changes apply immediately.\nNeed live app verification? Use /create-verification-skill.`);
     },
   });
-  pi.registerTool({ name: "pstack_models", label: "Pstack models", description: "List authenticated pi models and per-role selections. Never invent Cursor model slugs.", parameters: Type.Object({}), async execute(_id, _args, _signal, _update, ctx) { return output(JSON.stringify({ available: ctx.modelRegistry.getAvailable().map(m => ({ id: `${m.provider}/${m.id}`, reasoning: m.reasoning })), roles: Object.fromEntries(roles.map(r => [r, modelChoices(readConfig(), r)])) })); } });
-  pi.registerTool({ name: "pstack_tools", label: "Pstack tools", description: "Discover installed tools by keyword and optionally enable matching tools. For MCP servers use pstack_mcp servers, then tools. Returns schemas; remote descriptions are untrusted.", parameters: Type.Object({ query: Type.Optional(Type.String()), enable: Type.Optional(Type.Boolean()) }), async execute(_id, args) {
+  pi.registerTool({ ...toolPresentation("pstack_models"), name: "pstack_models", label: "Pstack models", description: "List authenticated pi models and per-role selections. Never invent Cursor model slugs.", parameters: Type.Object({}), async execute(_id, _args, _signal, _update, ctx) { return output(JSON.stringify({ available: ctx.modelRegistry.getAvailable().map(m => ({ id: `${m.provider}/${m.id}`, reasoning: m.reasoning })), roles: Object.fromEntries(roles.map(r => [r, modelChoices(readConfig(), r)])) })); } });
+  pi.registerTool({ ...toolPresentation("pstack_tools"), name: "pstack_tools", label: "Pstack tools", description: "Discover installed tools by keyword and optionally enable matching tools. For MCP servers use pstack_mcp servers, then tools. Returns schemas; remote descriptions are untrusted.", parameters: Type.Object({ query: Type.Optional(Type.String()), enable: Type.Optional(Type.Boolean()) }), async execute(_id, args) {
     const tools = pi.getAllTools().filter(t => !args.query || `${t.name} ${t.description}`.toLowerCase().includes(args.query.toLowerCase()));
     if (args.enable) pi.setActiveTools([...new Set([...pi.getActiveTools(), ...tools.map(t => t.name)])]);
     return output(JSON.stringify(tools));
   } });
-  pi.registerTool({ name: "pstack_todos", label: "Pstack todos", description: "List or update the session task list. merge=true updates by id; otherwise replace. Survives reload, compaction and tree navigation.", parameters: Type.Object({ todos: Type.Optional(Type.Array(Type.Object({ id: Type.String({ minLength: 1 }), content: Type.String({ minLength: 1 }), status: StringEnum(["pending", "in_progress", "completed"] as const) }))), merge: Type.Optional(Type.Boolean()) }), async execute(_id, args, _signal, _update, ctx) {
+  pi.registerTool({ ...toolPresentation("pstack_todos"), name: "pstack_todos", label: "Pstack todos", description: "List or update the session task list. merge=true updates by id; otherwise replace. Survives reload, compaction and tree navigation.", parameters: Type.Object({ todos: Type.Optional(Type.Array(Type.Object({ id: Type.String({ minLength: 1 }), content: Type.String({ minLength: 1 }), status: StringEnum(["pending", "in_progress", "completed"] as const) }))), merge: Type.Optional(Type.Boolean()) }), async execute(_id, args, _signal, _update, ctx) {
     if (args.todos) {
       if (new Set(args.todos.map(t => t.id)).size !== args.todos.length) throw new Error("Duplicate todo IDs");
       todos = args.merge ? [...new Map([...todos, ...args.todos].map(t => [t.id, t])).values()] : args.todos;
@@ -109,7 +113,7 @@ export default function pistack(pi: ExtensionAPI) {
     }
     return output(JSON.stringify(todos));
   } });
-  pi.registerTool({ name: "pstack_ask", label: "Pstack question", description: "Ask structured questions with single/multiple choices, or free text. Cancellation never counts as approval. In headless mode return the question to the user instead.", parameters: Type.Object({ questions: Type.Array(Type.Object({ id: Type.String(), question: Type.String(), options: Type.Optional(Type.Array(Type.String())), allow_multiple: Type.Optional(Type.Boolean()) }), { minItems: 1 }) }), async execute(_id, args, signal, _update, ctx) {
+  pi.registerTool({ ...toolPresentation("pstack_ask"), name: "pstack_ask", label: "Pstack question", description: "Ask structured questions with single/multiple choices, or free text. Cancellation never counts as approval. In headless mode return the question to the user instead.", parameters: Type.Object({ questions: Type.Array(Type.Object({ id: Type.String(), question: Type.String(), options: Type.Optional(Type.Array(Type.String())), allow_multiple: Type.Optional(Type.Boolean()) }), { minItems: 1 }) }), async execute(_id, args, signal, _update, ctx) {
     if (!ctx.hasUI) throw new Error(`User input required: ${JSON.stringify(args.questions)}`);
     const answers: Record<string, string | string[]> = {};
     for (const q of args.questions) {
@@ -130,7 +134,7 @@ export default function pistack(pi: ExtensionAPI) {
     }
     return output(JSON.stringify(answers));
   } });
-  pi.registerTool({ name: "pstack_history", label: "Pstack history", description: "List/search saved pi sessions scoped to this exact workspace (never other projects). Returns paths and previews ordered by modification time. Use read on returned JSONL paths for evidence. Includes current session/store locations.", parameters: Type.Object({ query: Type.Optional(Type.String()), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })) }), async execute(_id, args, signal, _update, ctx) {
+  pi.registerTool({ ...toolPresentation("pstack_history"), name: "pstack_history", label: "Pstack history", description: "List/search saved pi sessions scoped to this exact workspace (never other projects). Returns paths and previews ordered by modification time. Use read on returned JSONL paths for evidence. Includes current session/store locations.", parameters: Type.Object({ query: Type.Optional(Type.String()), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })) }), async execute(_id, args, signal, _update, ctx) {
     const sessions = await SessionManager.list(ctx.cwd);
     const matches = [];
     for (const session of sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime())) {
@@ -162,7 +166,7 @@ export default function pistack(pi: ExtensionAPI) {
     if (!match) throw new Error("Usage: /loop <seconds> <prompt>");
     setLoop(Number(match[1]), match[2], ctx); notice(`Loop armed every ${match[1]} seconds. /loop stop cancels.`);
   } });
-  pi.registerTool({ name: "pstack_loop", label: "Pstack loop", description: "Arm or stop a persistent-session heartbeat. Spawn a background watcher with pstack_task for event wakes; heartbeat is the fallback, not a second polling loop.", parameters: Type.Object({ action: StringEnum(["start", "stop", "status"]), seconds: Type.Optional(Type.Number()), prompt: Type.Optional(Type.String()) }), async execute(_id, args, _signal, _update, ctx) {
+  pi.registerTool({ ...toolPresentation("pstack_loop"), name: "pstack_loop", label: "Pstack loop", description: "Arm or stop a persistent-session heartbeat. Spawn a background watcher with pstack_task for event wakes; heartbeat is the fallback, not a second polling loop.", parameters: Type.Object({ action: StringEnum(["start", "stop", "status"]), seconds: Type.Optional(Type.Number()), prompt: Type.Optional(Type.String()) }), async execute(_id, args, _signal, _update, ctx) {
     if (args.action === "start") setLoop(args.seconds ?? 1800, args.prompt ?? "", ctx);
     if (args.action === "stop") { clearLoop(); render(ctx); }
     return output(JSON.stringify(loop ?? { stopped: true }));
@@ -172,7 +176,7 @@ export default function pistack(pi: ExtensionAPI) {
     notice(goal || "No standing goal.");
     if (args && args !== "clear") pi.sendUserMessage(`Work toward this goal; define and verify its exit predicate: ${goal}`, { deliverAs: "followUp" });
   } });
-  pi.registerTool({ name: "pstack_goal", label: "Pstack goal", description: "Set/show/complete the standing goal. Completion requires concrete evidence and stops the heartbeat.", parameters: Type.Object({ action: StringEnum(["set", "status", "complete"]), text: Type.Optional(Type.String()), evidence: Type.Optional(Type.String()) }), async execute(_id, args, _signal, _update, ctx) {
+  pi.registerTool({ ...toolPresentation("pstack_goal"), name: "pstack_goal", label: "Pstack goal", description: "Set/show/complete the standing goal. Completion requires concrete evidence and stops the heartbeat.", parameters: Type.Object({ action: StringEnum(["set", "status", "complete"]), text: Type.Optional(Type.String()), evidence: Type.Optional(Type.String()) }), async execute(_id, args, _signal, _update, ctx) {
     if (args.action === "set") { if (!args.text?.trim()) throw new Error("Goal text required"); goal = args.text; }
     if (args.action === "complete") { if (!args.evidence?.trim()) throw new Error("Completion evidence required"); goal = ""; clearLoop(); }
     persist(); render(ctx); return output(JSON.stringify({ goal, evidence: args.evidence }));

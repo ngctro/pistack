@@ -19,10 +19,12 @@ process.env.HOME = home;
 const model = { provider: "test", id: "model", reasoning: false };
 function harness(factory = pistack, cwd = home) {
   const tools = new Map<string, ToolDefinition>();
+  const renderers = new Map<string, unknown>();
   const commands = new Map<string, { handler: (args: string, ctx: ExtensionContext) => Promise<void> }>();
   const handlers = new Map<string, Function[]>();
   const entries: unknown[] = [], sent: unknown[] = [];
   const pi = {
+    registerMessageRenderer: (name: string, renderer: unknown) => renderers.set(name, renderer),
     registerTool: (t: ToolDefinition) => tools.set(t.name, t),
     registerCommand: (name: string, cmd: { handler: (args: string, ctx: ExtensionContext) => Promise<void> }) => commands.set(name, cmd),
     on: (name: string, handler: Function) => handlers.set(name, [...(handlers.get(name) ?? []), handler]),
@@ -41,7 +43,7 @@ function harness(factory = pistack, cwd = home) {
   factory(pi);
   const call = (name: string, args: unknown = {}, signal?: AbortSignal) => tools.get(name)!.execute("test", args, signal, undefined, ctx);
   const event = async (name: string, data = {}) => { for (const h of handlers.get(name) ?? []) await h(data, ctx); };
-  return { tools, commands, handlers, ctx, call, event, entries, sent };
+  return { tools, renderers, commands, handlers, ctx, call, event, entries, sent };
 }
 
 test("all upstream skills and referenced team-kit closure load with valid metadata", () => {
