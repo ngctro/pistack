@@ -1,0 +1,33 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - run: npm ci
+      - run: bun install --cwd skills/poteto-mode/scripts --frozen-lockfile
+      - run: npm run verify && npm run test:smoke
+      - name: Validate version and pack
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module -e 'import p from "./package.json" with {type:"json"}; if (`v${p.version}` !== process.env.TAG) throw new Error("Tag/version mismatch")'
+          npm pack
+          sha256sum *.tgz > SHA256SUMS
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" *.tgz SHA256SUMS --verify-tag --title "pistack $TAG" --generate-notes

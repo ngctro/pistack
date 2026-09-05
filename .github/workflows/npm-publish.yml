@@ -1,0 +1,35 @@
+name: Publish to npm (opt-in)
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag, e.g. v0.1.0'
+        required: true
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - run: npm ci
+      - run: bun install --cwd skills/poteto-mode/scripts --frozen-lockfile
+      - run: npm run verify && npm run test:smoke
+      - name: Validate release and publish
+        env:
+          TAG: ${{ inputs.tag }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          test -n "$NODE_AUTH_TOKEN" || { echo 'Configure NPM_TOKEN in the npm environment first'; exit 1; }
+          node --input-type=module -e 'import p from "./package.json" with {type:"json"}; if (`v${p.version}` !== process.env.TAG) throw new Error("Tag/version mismatch")'
+          npm publish --access public

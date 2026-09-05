@@ -1,0 +1,26 @@
+{
+  "repository": "https://github.com/cursor/plugins",
+  "commit": "93b00b89ef425a9c1bac0d0b317dfc49c930ac99",
+  "pstack": {
+    "path": "pstack",
+    "skills": 45,
+    "agents": 2,
+    "playbooks": 23,
+    "includes": ["skills", "agents", "automations", "docs", "LICENSE"]
+  },
+  "teamKitSkills": ["deslop", "control-cli", "control-ui", "verify-this"],
+  "teamKitDependency": "control-ui -> verify-this",
+  "nativeSkills": ["create-skill", "automate"],
+  "port": {
+    "runtime": "pi 0.85.0",
+    "changes": [
+      "Native extension, RPC workers, model configuration, questions, todos, goals, loops, history and MCP bridge",
+      "Local authenticated routine host replacing private hosted automation mechanics",
+      "Cursor paths, metadata and model slugs adapted to pi",
+      "Setup, bot UI and automation setup instructions rewritten for native capabilities",
+      "Portable conservative worktree audit replaces macOS-specific transcript lookup",
+      "Licenses and guide artwork retained"
+    ],
+    "refresh": "Review upstream changes against this commit. Do not overwrite the adapted runtime or prose with a blind copy. scripts/port-upstream.py records only the original mechanical import, not the subsequent manual port."
+  }
+}
