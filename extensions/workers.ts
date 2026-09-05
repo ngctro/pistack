@@ -9,7 +9,7 @@ import { Type } from "typebox";
 import { modelChoices, readConfig, resolveModel } from "./config.ts";
 import { output } from "./output.ts";
 import { discoverAgents } from "./agents.ts";
-import { toolPresentation, messagePresentation } from "./ui.ts";
+import { toolPresentation, messagePresentation, showWorkers } from "./ui.ts";
 
 export const root = fileURLToPath(new URL("../", import.meta.url));
 export const Task = Type.Object({
@@ -55,7 +55,27 @@ export function registerWorkers(pi: ExtensionAPI) {
   };
   const get = (ctx: ExtensionContext, id: string): WorkerRecord => {
     if (!/^[\da-f-]{36}$/.test(id)) throw new Error("Invalid worker ID");
-    return workers.get(id)?.record ?? JSON.parse(readFileSync(join(directory(ctx), `${id}.json`), "utf8"));
+    const live = workers.get(id)?.record;
+    if (live) return live;
+    const path = join(directory(ctx), `${id}.json`);
+    try {
+      return JSON.parse(readFileSync(path, "utf8"));
+    } catch (error) {
+      throw new Error(`Worker ${id} record is unreadable (${path}): ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+  const listRecords = (ctx: ExtensionContext): WorkerRecord[] => {
+    const dir = directory(ctx);
+    const saved: WorkerRecord[] = [];
+    if (existsSync(dir)) for (const name of readdirSync(dir).filter(n => n.endsWith(".json"))) {
+      const path = join(dir, name);
+      try {
+        saved.push(JSON.parse(readFileSync(path, "utf8")));
+      } catch (error) {
+        console.warn(`Skipping unreadable worker record ${path}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return saved.map(r => workers.get(r.id)?.record ?? (r.status === "running" ? { ...r, status: "failed", error: "Parent session ended; inspect evidence before resuming" } : r));
   };
   async function start(ctx: ExtensionContext, task: TaskInput, previous?: WorkerRecord): Promise<Worker> {
     if (closed) throw new Error("Session is shutting down");
@@ -150,11 +170,7 @@ export function registerWorkers(pi: ExtensionAPI) {
     parameters: Type.Object({ action: StringEnum(["agents", "list", "wait", "cancel", "interrupt", "resume"]), id: Type.Optional(Type.String()), prompt: Type.Optional(Type.String()) }),
     async execute(_id, args, signal, _update, ctx) {
       if (args.action === "agents") return output(JSON.stringify(discoverAgents(ctx.cwd, ctx.isProjectTrusted()).map(({ prompt, ...metadata }) => metadata)));
-      if (args.action === "list") {
-        const dir = directory(ctx);
-        const saved: WorkerRecord[] = existsSync(dir) ? readdirSync(dir).filter(n => n.endsWith(".json")).map(n => JSON.parse(readFileSync(join(dir, n), "utf8"))) : [];
-        return output(JSON.stringify(saved.map(r => workers.get(r.id)?.record ?? (r.status === "running" ? { ...r, status: "failed", error: "Parent session ended; inspect evidence before resuming" } : r))));
-      }
+      if (args.action === "list") return output(JSON.stringify(listRecords(ctx)));
       if (!args.id && args.action !== "cancel") throw new Error("Worker id required");
       const targets = args.id ? [workers.get(args.id)].filter((w): w is Worker => !!w) : [...workers.values()];
       if (args.action === "resume") {
@@ -179,6 +195,16 @@ export function registerWorkers(pi: ExtensionAPI) {
         }
       }
       return output(JSON.stringify(targets.map(w => w.record)));
+    },
+  });
+  pi.registerCommand("pstack-workers", {
+    description: "Browse session workers and reports (read-only).",
+    handler: async (_args, ctx) => {
+      if (ctx.mode !== "tui") {
+        pi.sendMessage({ customType: "pstack-worker", content: JSON.stringify(listRecords(ctx), null, 2), display: true }, { triggerTurn: false });
+        return;
+      }
+      await showWorkers(ctx, () => listRecords(ctx));
     },
   });
   pi.registerCommand("pstack-agents", {

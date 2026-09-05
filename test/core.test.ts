@@ -206,3 +206,18 @@ process.stdout.write('{"type":"agent_settled"}\\n');
     await restarted.event("session_shutdown");
   } finally { await h.event("session_shutdown"); process.env.PATH = oldPath; }
 });
+
+test("worker list skips corrupt records and resume names the file", async () => {
+  const h = harness(registerWorkers);
+  const dir = join(process.env.PI_CODING_AGENT_DIR!, "pstack", "runs", h.ctx.sessionManager.getSessionId());
+  mkdirSync(dir, { recursive: true });
+  const good = { id: "aaaaaaaa-1111-2222-3333-444444444444", cwd: home, session: "s", report: "r", model: "m", status: "done", readonly: true, agent: "explorer" };
+  writeFileSync(join(dir, `${good.id}.json`), JSON.stringify(good));
+  writeFileSync(join(dir, "broken.json"), "{not json");
+  const rows = JSON.parse(text(await h.call("pstack_workers", { action: "list" })));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, good.id);
+  const badId = "bbbbbbbb-1111-2222-3333-444444444444";
+  writeFileSync(join(dir, `${badId}.json`), "{corrupt");
+  await assert.rejects(h.call("pstack_workers", { action: "resume", id: badId, prompt: "retry" }), new RegExp(`unreadable.*${badId}`));
+});
