@@ -37,11 +37,11 @@ Merge this entry into the existing JSON or JSONC:
 
 ```json
 {
-	"packages": ["git:github.com/ngctro/pistack@v0.1.0"]
+	"packages": ["git:github.com/ngctro/pistack@v0.1.1"]
 }
 ```
 
-Prefer `pi install -l git:github.com/ngctro/pistack@v0.1.0` in the target repository. Preserve existing packages and unrelated settings. Pi settings use JSON, not Cursor plugin enablement entries. Validate after editing.
+Prefer `pi install -l git:github.com/ngctro/pistack@v0.1.1` in the target repository. Preserve existing packages and unrelated settings. Pi settings use JSON, not Cursor plugin enablement entries. Validate after editing.
 
 Reload the target project or start a fresh agent rooted there. Verify that these shared pstack skills resolve from project scope:
 

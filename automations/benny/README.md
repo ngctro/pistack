@@ -12,7 +12,7 @@ the files in this directory are dormant setup and automation sources. they do no
 
 ```json
 {
-	"packages": ["git:github.com/ngctro/pistack@v0.1.0"]
+	"packages": ["git:github.com/ngctro/pistack@v0.1.1"]
 }
 ```
 

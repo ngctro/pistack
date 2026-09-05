@@ -6,11 +6,13 @@ This file defines the runtime for the port. Read it before running any bundled w
 
 The package exposes every ordinary skill as both `/name` and `/skill:name`. Resolve relative files from the skill's directory, not the working directory. Paths beginning `skills/` in imported prose refer to this package root. Never assume this package is checked into the project being edited. To refresh a workflow from upstream, fetch this repository separately rather than running `git show` against the user's repository.
 
+Short aliases preserve upstream commands but can collide with commands from other extensions. Use `/skill:name` to invoke the bundled skill explicitly when a short alias is ambiguous; it loads the skill rather than running a special command handler.
+
 `/poteto-mode` activates persistent session instructions. `/poteto-mode off` disables them. `/skill:poteto-mode` loads the skill for one invocation. `poteto-agent` reads the same skill. `comment-sicko` is the Comment Sicko agent. Neither agent is an external service.
 
 ## Delegation
 
-Use `pstack_task` wherever imported prose says Task. Its schema preserves `prompt`, `subagent_type`, `model`, `readonly`, `run_in_background`, `environment`, `cwd`, and `cloud_base_branch`. Pass a configured `role` instead of hardcoding a historical model slug. Panel roles return lists from `pstack_models`; spawn one independent worker for each entry. Four `inherit-parent` entries are four independent attempts, not four model families. Disclose missing diversity instead of pretending it exists.
+Use `pstack_task` to spawn workers. Its parameters include `prompt`, `subagent_type`, `model`, `readonly`, `run_in_background`, `environment`, `cwd`, and `cloud_base_branch`. Pass a configured `role` instead of hardcoding a historical model slug. Panel roles return lists from `pstack_models`; spawn one independent worker for each entry. Four `inherit-parent` entries are four independent attempts, not four model families. Disclose missing diversity instead of pretending it exists.
 
 Call `pstack_task` multiple times in one assistant turn to fan out. Background mode is the default. Each call returns an ID, working directory, report path, and saved pi session path. `pstack_workers` lists, waits, interrupts, cancels, and resumes. Completed background workers send a follow-up notification that wakes the parent. A resume needs a consolidated brief; do not rely on earlier interrupts.
 
@@ -38,8 +40,8 @@ Unset single roles inherit the parent. Unset panels have four inherited entries.
 
 ## Tasks, questions, goals and loops
 
-- `pstack_todos` replaces TodoWrite. Replace the list or merge updates by ID. State follows pi's active session branch and survives compaction/reload.
-- `pstack_ask` replaces AskQuestion, including multiple selections. It uses pi TUI/RPC dialogs. Headless calls report that human input is required. Cancellation is never approval.
+- `pstack_todos` manages the session task list. Replace the list or merge updates by ID. State follows pi's active session branch and survives compaction/reload.
+- `pstack_ask` asks structured questions, including multiple selections. It uses pi TUI/RPC dialogs. Headless calls report that human input is required. Cancellation is never approval.
 - Plans are Markdown files plus the native todo list. Follow the multi-phase-plan playbook and run its bundled `check-plan.mjs`. No private IDE plan editor is required.
 - `/goal <predicate>` stores a standing goal and starts work. `pstack_goal complete` requires evidence and clears the heartbeat. `/goal clear` clears it manually.
 - `/loop <seconds> <prompt>` or `pstack_loop` arms a heartbeat in a persistent TUI/RPC process. `/loop stop` cancels it. Use background watcher workers for event wakes; the timer is only a fallback. Busy ticks coalesce instead of filling the queue. A timer never starts another agent while one is running.

@@ -5,7 +5,7 @@
 Requires pi 0.85+, Node 22.18+, and Git. In a terminal:
 
 ```sh
-pi install git:github.com/ngctro/pistack@v0.1.0
+pi install git:github.com/ngctro/pistack@v0.1.1
 ```
 
 Start pi (or `/reload` an existing session), then run `/setup-pstack`. Use `pi install -l ...` for project-local installation; approve the project only after reviewing its code. Optional workflow tools are listed in the [README](../../README.md).

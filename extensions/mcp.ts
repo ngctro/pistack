@@ -25,7 +25,7 @@ export function registerMcp(pi: ExtensionAPI) {
       if (!server) throw new Error("Choose a configured server using action=servers");
       const env = Object.fromEntries(Object.entries(server.env ?? {}).map(([key, value]) => [key, expandEnv(value)]));
       const headers = Object.fromEntries(Object.entries(server.headers ?? {}).map(([key, value]) => [key, expandEnv(value)]));
-      const client = new Client({ name: "pistack", version: "0.1.0" });
+      const client = new Client({ name: "pistack", version: "0.1.1" });
       const transport = server.command
         ? new StdioClientTransport({ command: server.command, args: server.args, env, stderr: "ignore" })
         : server.transport === "sse"

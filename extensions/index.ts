@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { getAgentDir, parseFrontmatter, stripFrontmatter, SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, parseFrontmatter, SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { configPath, modelChoices, panels, readConfig, resolveModel, roles, writeConfig } from "./config.ts";
 import { output } from "./output.ts";
 import { registerWorkers, root } from "./workers.ts";

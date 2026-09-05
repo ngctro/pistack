@@ -28,7 +28,7 @@ Call `pstack_history` and use its `current` transcript path. Worker session path
 
 ### 2. Spawn three reviewers in parallel
 
-One message, three `Task` calls, `subagent_type: generalPurpose`, explicit `model:` on each, agent mode (`readonly: false`). Reviewers need MCP access for context lookups (tickets, chat threads, observability traces referenced in the transcript); read-only mode restricts MCP calls to annotated read-only tools. The prompt forbids file writes; the parent applies edits.
+One message, three `pstack_task` calls, `subagent_type: generalPurpose`, explicit `model:` on each, agent mode (`readonly: false`). Reviewers need MCP access for context lookups (tickets, chat threads, observability traces referenced in the transcript); read-only mode restricts MCP calls to annotated read-only tools. The prompt forbids file writes; the parent applies edits.
 
 | Lens | `model` | Prompt template |
 |---|---|---|
@@ -36,11 +36,11 @@ One message, three `Task` calls, `subagent_type: generalPurpose`, explicit `mode
 | Tooling | your configured reflect-tooling model (default `inherit-parent`) | `references/tooling-reviewer.md` |
 | Divergent | your configured reflect-judgment model (default `inherit-parent`) | `references/divergent-reviewer.md` |
 
-Pass each template verbatim, substituting the transcript path or digest where marked. Reviewers return findings in the `Task` response body.
+Pass each template verbatim, substituting the transcript path or digest where marked. Reviewers return findings in the report files returned by `pstack_task`; use `pstack_workers` to wait for completion.
 
 ### 3. Synthesize
 
-One `Task` call, `subagent_type: generalPurpose`, using your configured reflect-judgment model (default `inherit-parent`), agent mode (`readonly: false`). The synthesizer's quality check includes spot-verifying citations, which can require MCP access; read-only mode restricts MCP calls to annotated read-only tools. Use `references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. The synthesizer returns a structured Accepted / Rejected / Backlog list.
+One `pstack_task` call, `subagent_type: generalPurpose`, using your configured reflect-judgment model (default `inherit-parent`), agent mode (`readonly: false`). The synthesizer's quality check includes spot-verifying citations, which can require MCP access; read-only mode restricts MCP calls to annotated read-only tools. Use `references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. The synthesizer returns a structured Accepted / Rejected / Backlog list.
 
 ### 4. Structural enforcement check
 

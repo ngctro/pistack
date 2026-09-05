@@ -68,11 +68,11 @@ i want you to merge this entry into the target repository's `.pi/settings.json`:
 
 ```json
 {
-	"packages": ["git:github.com/ngctro/pistack@v0.1.0"]
+	"packages": ["git:github.com/ngctro/pistack@v0.1.1"]
 }
 ```
 
-prefer `pi install -l git:github.com/ngctro/pistack@v0.1.0`. preserve every unrelated setting and package. validate the resulting JSON.
+prefer `pi install -l git:github.com/ngctro/pistack@v0.1.1`. preserve every unrelated setting and package. validate the resulting JSON.
 
 i want verification from a fresh agent rooted in the target repository. confirm that pstack's `how`, `why`, `tdd`, `unslop`, and the principle skills used by benny resolve in project scope. do not count skills loaded from the current session or a user-scoped install.
 

@@ -9,7 +9,7 @@ import { Type } from "typebox";
 import { output } from "./output.ts";
 
 export function registerRoutines(pi: ExtensionAPI) {
-  let process: ChildProcess | undefined;
+  let runner: ChildProcess | undefined;
   pi.registerTool({
     name: "pstack_routines", label: "Pstack routines",
     description: "Create/update disabled webhook or scheduled pi routines; list, enable, disable, or start/stop the local runner. Creation never enables execution. Auth tokens are generated into private files, never returned to chat. Inspect and approve the prompt before enabling. Runner defaults to localhost:8787; keep it alive with tmux/systemd for unattended runs. Slack triggers require SLACK_SIGNING_SECRET and an explicit channel. Persistent JSON configs live under the pi agent directory.",
@@ -24,18 +24,18 @@ export function registerRoutines(pi: ExtensionAPI) {
       const dir = join(getAgentDir(), "pstack", "routines");
       mkdirSync(dir, { recursive: true, mode: 0o700 });
       if (args.action === "list") return output(JSON.stringify(readdirSync(dir).filter(n => n.endsWith(".json")).map(n => JSON.parse(readFileSync(join(dir, n), "utf8")))));
-      if (args.action === "stop") { process?.kill("SIGTERM"); return output("Runner stop requested. Durable configs, queues, and evidence retained."); }
+      if (args.action === "stop") { runner?.kill("SIGTERM"); return output("Runner stop requested. Durable configs, queues, and evidence retained."); }
       if (args.action === "start") {
-        if (process && process.exitCode === null && !process.killed) throw new Error("Runner already started by this session");
+        if (runner && runner.exitCode === null && !runner.killed) throw new Error("Runner already started by this session");
         const script = fileURLToPath(new URL("../automations/runner.mjs", import.meta.url));
         const log = join(dir, "runner.log");
         const { openSync, closeSync } = await import("node:fs");
         const fd = openSync(log, "a", 0o600);
         try {
-          process = spawn("node", [script, "--directory", dir, "--port", String(args.port ?? 8787)], { stdio: ["ignore", fd, fd] });
-          await new Promise<void>((resolve, reject) => { process!.once("spawn", resolve); process!.once("error", reject); });
+          runner = spawn("node", [script, "--directory", dir, "--port", String(args.port ?? 8787)], { stdio: ["ignore", fd, fd] });
+          await new Promise<void>((resolve, reject) => { runner!.once("spawn", resolve); runner!.once("error", reject); });
         } finally { closeSync(fd); }
-        return output(`Runner PID ${process.pid}; log ${log}. Check /health before declaring it live. This process stops with pi. For restart-surviving hosting run node ${script} --directory ${dir} in tmux/systemd.`);
+        return output(`Runner PID ${runner.pid}; log ${log}. Check /health before declaring it live. This process stops with pi. For restart-surviving hosting run node ${script} --directory ${dir} in tmux/systemd.`);
       }
       if (!args.name) throw new Error("Routine name required");
       const file = join(dir, `${args.name}.json`);
@@ -53,5 +53,5 @@ export function registerRoutines(pi: ExtensionAPI) {
       return output(`Routine ${args.name} ${config.enabled ? "enabled" : "disabled"}. Runner reloads configurations per request/tick.`);
     },
   });
-  pi.on("session_shutdown", () => { process?.kill("SIGTERM"); });
+  pi.on("session_shutdown", () => { runner?.kill("SIGTERM"); });
 }

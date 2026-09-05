@@ -30,4 +30,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" *.tgz SHA256SUMS --verify-tag --title "pistack $TAG" --generate-notes
+        run: gh release create "$TAG" *.tgz SHA256SUMS --verify-tag --title "$TAG" --generate-notes

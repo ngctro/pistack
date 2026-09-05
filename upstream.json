@@ -21,6 +21,6 @@
       "Portable conservative worktree audit replaces macOS-specific transcript lookup",
       "Licenses and guide artwork retained"
     ],
-    "refresh": "Review upstream changes against this commit. Do not overwrite the adapted runtime or prose with a blind copy. scripts/port-upstream.py records only the original mechanical import, not the subsequent manual port."
+    "refresh": "Review upstream changes against this commit. Do not overwrite the adapted runtime or prose with a blind copy."
   }
 }

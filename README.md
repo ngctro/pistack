@@ -11,7 +11,7 @@ A native [pi](https://pi.dev) port of [poteto's pstack](https://github.com/curso
 Requires **pi 0.85+, Node 22.18+, Git**, and an authenticated pi model. Review the code first: extensions and workers run with your OS permissions.
 
 ```sh
-pi install git:github.com/ngctro/pistack@v0.1.0
+pi install git:github.com/ngctro/pistack@v0.1.1
 ```
 
 Start pi, or `/reload` an existing session:
