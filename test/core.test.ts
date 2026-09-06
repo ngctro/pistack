@@ -22,14 +22,14 @@ function harness(factory = pistack, cwd = home) {
   const renderers = new Map<string, unknown>();
   const commands = new Map<string, { handler: (args: string, ctx: ExtensionContext) => Promise<void> }>();
   const handlers = new Map<string, Function[]>();
-  const entries: unknown[] = [], sent: unknown[] = [];
+  const entries: unknown[] = [], sent: { m: unknown; opts?: { triggerTurn?: boolean; deliverAs?: string } }[] = [];
   const pi = {
     registerMessageRenderer: (name: string, renderer: unknown) => renderers.set(name, renderer),
     registerTool: (t: ToolDefinition) => tools.set(t.name, t),
     registerCommand: (name: string, cmd: { handler: (args: string, ctx: ExtensionContext) => Promise<void> }) => commands.set(name, cmd),
     on: (name: string, handler: Function) => handlers.set(name, [...(handlers.get(name) ?? []), handler]),
     appendEntry: (customType: string, data: unknown) => entries.push({ type: "custom", customType, data: structuredClone(data) }),
-    sendMessage: (m: unknown) => sent.push(m), sendUserMessage: (m: unknown) => sent.push(m),
+    sendMessage: (m: unknown, opts?: { triggerTurn?: boolean; deliverAs?: string }) => sent.push({ m, opts }), sendUserMessage: (m: unknown, opts?: { triggerTurn?: boolean; deliverAs?: string }) => sent.push({ m, opts }),
     getAllTools: () => [...tools.values()], getActiveTools: () => [...tools.keys()], setActiveTools: () => {},
   } as unknown as ExtensionAPI;
   const sm = SessionManager.inMemory(cwd);
@@ -220,4 +220,35 @@ test("worker list skips corrupt records and resume names the file", async () => 
   const badId = "bbbbbbbb-1111-2222-3333-444444444444";
   writeFileSync(join(dir, `${badId}.json`), "{corrupt");
   await assert.rejects(h.call("pstack_workers", { action: "resume", id: badId, prompt: "retry" }), new RegExp(`unreadable.*${badId}`));
+});
+
+test("background worker completion sends one quiet display notice without triggering a turn", async () => {
+  const cwd = join(home, "repo-quiet"), bin = join(home, "bin-quiet");
+  mkdirSync(cwd, { recursive: true }); mkdirSync(bin, { recursive: true });
+  execFileSync("git", ["init", "-b", "main", cwd]);
+  execFileSync("git", ["-C", cwd, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "initial"]);
+  writeFileSync(join(bin, "pi"), `#!/usr/bin/env node
+const fs = require('fs');
+const args = process.argv;
+const session = args[args.indexOf('--session')+1];
+fs.writeFileSync(session, '{}\\n');
+process.stdin.setEncoding('utf8'); let buf='';
+process.stdin.on('data', chunk => { buf += chunk; let end; while ((end=buf.indexOf('\\n'))>=0) {
+const msg=JSON.parse(buf.slice(0,end));buf=buf.slice(end+1);
+if(msg.type==='prompt') {
+process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',content:[{type:'text',text:'ok'}],stopReason:'stop'}})+'\\n');
+process.stdout.write('{"type":"agent_settled"}\\n');
+}
+}});
+`, { mode: 0o755 });
+  const oldPath = process.env.PATH; process.env.PATH = `${bin}:${oldPath}`;
+  const h = harness(registerWorkers, cwd);
+  try {
+    const record = JSON.parse(text(await h.call("pstack_task", { prompt: "quiet", environment: "local" })));
+    await h.call("pstack_workers", { action: "wait", id: record.id });
+    const notices = h.sent.filter(s => (s.m as { customType?: string })?.customType === "pstack-worker");
+    assert.equal(notices.length, 1);
+    assert.ok(!notices[0].opts?.triggerTurn);
+    assert.equal((notices[0].m as { display?: boolean })?.display, true);
+  } finally { await h.event("session_shutdown"); process.env.PATH = oldPath; }
 });
