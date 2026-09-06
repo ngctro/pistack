@@ -80,7 +80,7 @@ export function toolPresentation(name: string): Pick<ToolDefinition, "renderCall
   return {
     renderCall(args, theme) {
       const input = object(args) ? args : {};
-      const base = `${uiPreferences.icons === "nerd" ? "" : ">"} ${name.replace("pstack_", "")}`;
+      const base = name.replace("pstack_", "");
       const arg = single(String(input.action ?? input.query ?? input.subagent_type ?? ""));
       return { invalidate() {}, render: width => [clip(theme.fg("toolTitle", arg ? `${base} ${arg}` : base), width)] };
     },

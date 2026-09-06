@@ -100,8 +100,8 @@ test("counts sort canonically, call titles omit empty args, expanded string deta
   const done = slots.renderResult!(output(JSON.stringify(todos.map(t => ({ ...t, status: "completed" })))), { expanded: false, isPartial: false }, theme, context()).render(120);
   assert.match(done[0], /3 completed/);
   assert.match(done[1], /Completed/);
-  assert.match(slots.renderCall!({}, theme, context()).render(80)[0], / todos$/);
-  assert.match(toolPresentation("pstack_workers").renderCall!({ action: "list" }, theme, context({ action: "list" })).render(80)[0], / workers list$/);
+  assert.match(slots.renderCall!({}, theme, context()).render(80)[0], /^todos$/);
+  assert.match(toolPresentation("pstack_workers").renderCall!({ action: "list" }, theme, context({ action: "list" })).render(80)[0], /^workers list$/);
   const withStringDetails = slots.renderResult!(output(JSON.stringify(todos), "oops"), { expanded: true, isPartial: false }, theme, context()).render(1000).join("\n");
   assert.ok(!withStringDetails.includes('"oops"'));
 });
