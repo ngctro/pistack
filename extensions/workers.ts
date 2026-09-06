@@ -145,7 +145,7 @@ export function registerWorkers(pi: ExtensionAPI) {
       if (record.status !== "cancelled") record.status = settled && !record.error ? "done" : "failed";
       if (record.status === "failed" && !record.error) record.error = stderr || "Worker exited before completion";
       writeFileSync(record.report, text || record.error || record.status, { mode: 0o600 }); save(ctx, record); complete();
-      if (!closed && record.status !== "cancelled" && background) pi.sendMessage({ customType: "pstack-worker", content: `Worker ${id}: ${record.status}. Report: ${record.report}. Session: ${record.session}. Inspect artifacts before accepting.`, display: true }, { deliverAs: "followUp", triggerTurn: true });
+      if (!closed && record.status !== "cancelled" && background) pi.sendMessage({ customType: "pstack-worker", content: `Worker ${id}: ${record.status}. Report: ${record.report}. Session: ${record.session}. Inspect artifacts before accepting.`, display: true }, { triggerTurn: false });
     });
     child.stdin.write(JSON.stringify({ type: "prompt", message: task.prompt }) + "\n");
     return worker;
