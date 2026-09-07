@@ -170,15 +170,24 @@ export function todoWidget(read: () => readonly Todo[], theme?: Theme): Componen
     render(width) {
       const todos = read();
       if (!todos.length) return [];
-      const completed = todos.filter(t => t.status === "completed").length;
-      const filled = Math.round(8 * completed / todos.length);
-      const header = `Todos ${completed}/${todos.length} completed [${"#".repeat(filled)}${"-".repeat(8 - filled)}]`;
+      const skin = skinFor(theme);
+      const { theme: t, glyphs } = skin;
+      const closed = todos.filter(x => x.status === "completed").length;
       const active = activeFirst(todos);
-      const shown = active.slice(0, 3);
-      const done = lastDone(todos);
-      const rows = shown.length ? shown : done ? [done] : [];
-      const extra = active.length - shown.length;
-      return [header, ...rows.map(t => `${status(t.status, theme)} ${single(t.content)}`), extra > 0 ? `+${extra} more · /pstack-todos` : "/pstack-todos"].map(l => clip(l, width));
+      const shown = active.slice(0, BUDGETS.widgetTaskRows);
+      const lead = shown.length < BUDGETS.widgetTaskRows ? lastDone(todos) : undefined;
+      const rows = lead ? [lead, ...shown] : shown;
+      const pathLen = rows.length + BUDGETS.tailCells;
+      let filled = Math.round((closed / todos.length) * pathLen);
+      if (closed > 0) filled = Math.max(filled, 1);
+      if (closed < todos.length) filled = Math.min(filled, pathLen - 1);
+      const header = `${t.fg("accent", t.bold("Todos"))} ${t.fg("dim", `${closed}/${todos.length} completed`)}`;
+      const taskRows = rows.map((todo, i) => ` ${t.fg(i < filled ? "accent" : "dim", glyphs.tree.branch)} ${todoRow(todo, skin)}`);
+      const lit = Math.max(0, Math.min(filled - rows.length, BUDGETS.tailCells));
+      const tail = [t.fg(lit > 0 ? "accent" : "dim", glyphs.tree.hook), ...Array.from({ length: BUDGETS.tailCells - 1 }, (_, j) => t.fg(j < lit - 1 ? "accent" : "dim", glyphs.tree.horizontal))].join("");
+      const hidden = active.length - shown.length;
+      const hint = t.fg("dim", `${hidden > 0 ? ` ${glyphs.ellipsis} ${hidden} more` : ""} · /pstack-todos`);
+      return [header, ...taskRows, tail + hint].map(l => clip(l, width));
     },
   };
 }
