@@ -1,0 +1,123 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { initTheme, type Theme } from "@earendil-works/pi-coding-agent";
+import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
+import { argsInline, framedBlock, glyphSet, identityTheme, moreRow, statusLine, treeList, type Skin } from "../extensions/visual.ts";
+import type { Todo } from "../extensions/types.ts";
+
+initTheme("dark", false);
+const themes: Theme[] = [identityTheme];
+const skins = themes.map(theme => ({ theme, glyphs: glyphSet("nerd") }) as Skin);
+const asciiSkin = { theme: identityTheme, glyphs: glyphSet("ascii") } as Skin;
+const widths = [1, 3, 8, 12, 20, 40, 80, 120];
+
+
+test("glyph sets are complete for every status key", () => {
+  for (const skin of [...skins, asciiSkin]) {
+    for (const key of ["pending", "in_progress", "completed", "running", "done", "failed", "cancelled", "info", "partial"] as const) {
+      assert.ok(skin.glyphs.status[key].glyph.length > 0);
+      assert.ok(skin.glyphs.status[key].label.length > 0);
+    }
+    assert.equal(skin.glyphs.icons, skin === asciiSkin ? "ascii" : "nerd");
+    assert.equal(skin.glyphs.checkbox.checked.length > 0, true);
+  }
+  assert.equal(asciiSkin.glyphs.box.topLeft, "+");
+  assert.equal(asciiSkin.glyphs.tree.branch, "|-");
+});
+
+test("statusLine composes icon, title, description, badge, meta without newline splits", () => {
+  for (const skin of skins) {
+    const line = statusLine({ icon: "running", title: "Todos", description: "replace\nlist", badge: { label: "live", color: "accent" }, meta: ["6 tasks", "2 done"] }, skin);
+    assert.ok(!line.includes("\n"));
+    assert.match(line, /Todos: replace list/);
+    assert.match(line, /\[live\]/);
+    assert.match(line, /6 tasks · 2 done/);
+    const override = statusLine({ iconOverride: "◆", title: "Task" }, skin);
+    assert.match(override, /^◆ Task/);
+    const emptyMeta = statusLine({ icon: "done", title: "X", meta: ["", "  "] }, skin);
+    assert.ok(!emptyMeta.includes("·"));
+  }
+});
+
+test("treeList emits branch glyphs, summary rows and honors trailingSummary mode", () => {
+  const items = ["a", "b", "c", "d"];
+  for (const skin of [...skins, asciiSkin]) {
+    const full = treeList({ items, renderItem: i => i }, skin);
+    assert.equal(full.length, 4);
+    assert.ok(full[0].includes(skin.glyphs.tree.branch));
+    assert.ok(full[3].includes(skin.glyphs.tree.last));
+    const capped = treeList({ items, maxCollapsed: 2, itemType: "todo", renderItem: i => i }, skin);
+    assert.equal(capped.length, 3);
+    assert.match(capped[2], new RegExp(`^${skin.glyphs.tree.last} … 2 more todos`));
+    const expanded = treeList({ items, expanded: true, maxCollapsed: 1, renderItem: i => i }, skin);
+    assert.equal(expanded.length, 4);
+    assert.ok(!expanded.some(l => l.includes("more")));
+    const caller = treeList({ items: items.slice(0, 2), trailingSummary: "custom tail", renderItem: i => i }, skin);
+    assert.equal(caller.length, 3);
+    assert.match(caller[2], /custom tail/);
+    const noSummary = treeList({ items: items.slice(0, 2), trailingSummary: "", renderItem: i => i }, skin);
+    assert.equal(noSummary.length, 2);
+    assert.ok(noSummary[1].includes(skin.glyphs.tree.last));
+  }
+});
+
+test("multi-line rows get spine continuations and line count never varies with isLast", () => {
+  for (const skin of skins) {
+    const row = (item: string) => [`head ${item}`, `sub ${item}`];
+    const lines = treeList({ items: ["a", "b"], renderItem: row }, skin);
+    assert.equal(lines.length, 4);
+    assert.ok(lines[1].includes(skin.glyphs.tree.vertical));
+    const counts = new Set<number>();
+    treeList({ items: ["x"], renderItem: (item, ctx) => { counts.add(row(item).length + (ctx.isLast ? 1 : 0)); return row(item); } }, skin);
+  }
+});
+
+test("moreRow pluralizes", () => {
+  for (const skin of skins) {
+    assert.equal(moreRow(1, "todo", skin), "… 1 more todo");
+    assert.equal(moreRow(3, "worker", skin), "… 3 more workers");
+  }
+});
+
+test("framedBlock bounds width across every frame row and clamps degenerate widths", () => {
+  const body = treeList({ items: ["alpha", "beta"], renderItem: i => i }, skins[0]);
+  for (const width of widths) {
+    for (const skin of skins) {
+      const lines = framedBlock({ header: "Todos 2/6", state: "success", sections: [{ lines: body }], footerMeta: "ctrl+o", width }, skin);
+      assert.equal(lines.length, 4);
+      for (const line of lines) {
+        assert.ok(!line.includes("\n"), `row split at width ${width}`);
+        assert.ok(visibleWidth(line) <= Math.max(width, 8), `${visibleWidth(line)} > ${Math.max(width, 8)} at ${width}`);
+      }
+    }
+  }
+});
+
+test("framedBlock embeds header and footer labels in bars, content inside borders", () => {
+  const lines = framedBlock({ header: "Todos", headerMeta: "6 tasks", state: "running", sections: [{ label: "Report", lines: ["row one"] }], footerMeta: "ctrl+o: expand", width: 60 }, skins[0]);
+  assert.match(lines[0], /Todos · 6 tasks/);
+  assert.match(lines[1], /Report/);
+  assert.ok(lines[2].includes("│"));
+  assert.match(lines[3], /ctrl\+o: expand/);
+  const separated = framedBlock({ sections: [{ lines: ["a"] }, { separator: true, lines: ["b"] }, { label: "L", lines: ["c"] }], width: 50 }, skins[0]);
+  assert.equal(separated.length, 7);
+  assert.ok(separated[2].includes(skins[0].glyphs.box.teeRight));
+  assert.ok(separated[4].includes(skins[0].glyphs.box.teeRight));
+});
+
+test("argsInline clips to width with ellipsis and formats scalars", () => {
+  assert.equal(argsInline({ action: "list", id: "x" }, 60), 'action="list", id="x"');
+  assert.equal(stripTerminalSequences(argsInline({ a: "one two three four five six seven", b: "kept" }, 24)), 'a="one two three f…", …');
+  assert.equal(argsInline({ todos: [{}, {}, {}] }, 30), "todos=[3 items]");
+  assert.equal(argsInline({ cfg: { x: 1 } }, 30), "cfg={1 keys}");
+  assert.equal(argsInline({ n: 5, flag: true }, 30), "n=5, flag=true");
+  assert.equal(argsInline({}, 30), "");
+  assert.equal(argsInline({ a: "x" }, 1), "");
+});
+
+test("framedBlock never grows beyond two bars plus content rows", () => {
+  const todos: Todo[] = Array.from({ length: 10 }, (_, i) => ({ id: String(i), content: `task ${i}`, status: i < 4 ? "completed" : "pending" }));
+  const body = treeList({ items: todos.slice(0, 8), renderItem: t => t.content }, skins[0]);
+  const lines = framedBlock({ header: "T", sections: [{ lines: body }], width: 40 }, skins[0]);
+  assert.equal(lines.length, 2 + body.length);
+});
