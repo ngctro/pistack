@@ -1,31 +1,19 @@
 import { keyHint, type ExtensionContext, type MessageRenderer, type Theme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { matchesKey, stripTerminalSequences, truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
+import { matchesKey, stripTerminalSequences, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import { readFileSync } from "node:fs";
 import type { WorkerRecord } from "./workers.ts";
+import { argsInline, BUDGETS, framedBlock, glyphSet, identityTheme, moreRow, statusLine, treeList, type CardState, type GlyphSet, type Skin } from "./visual.ts";
+import type { Todo } from "./types.ts";
 
-export type Todo = { id: string; content: string; status: "pending" | "in_progress" | "completed" };
+export type { Todo } from "./types.ts";
 export type UiPreferences = { icons: "nerd" | "ascii"; motion: "off" | "active" };
 export const uiPreferences: UiPreferences = { icons: "nerd", motion: "active" };
-const styles = {
-  pending: ["", "o", "Pending", "muted"],
-  in_progress: ["", ">", "In progress", "accent"],
-  completed: ["", "+", "Completed", "success"],
-  running: ["", ">", "Running", "accent"],
-  done: ["", "+", "Done", "success"],
-  failed: ["", "!", "Failed", "error"],
-  cancelled: ["", "-", "Cancelled", "warning"],
-} as const satisfies Record<Todo["status"] | WorkerRecord["status"], readonly [string, string, string, Parameters<Theme["fg"]>[0]]>;
 
 export function safeText(text: string): string {
   return stripTerminalSequences(text).replace(/\r\n?/g, "\n").replace(/\t/g, "  ").replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, "");
 }
 const single = (text: string) => safeText(text).replace(/[\n\u2028\u2029]/g, " ");
 const clip = (text: string, width: number) => truncateToWidth(text, Math.max(0, width), "…");
-const status = (value: keyof typeof styles, theme?: Theme) => {
-  const [nerd, ascii, label, color] = styles[value];
-  const text = `${uiPreferences.icons === "nerd" ? nerd : ascii} ${label}`;
-  return theme ? theme.fg(color, text) : text;
-};
 const activeFirst = (todos: readonly Todo[]) => [...todos.filter(t => t.status === "in_progress"), ...todos.filter(t => t.status === "pending")];
 const lastDone = (todos: readonly Todo[]) => todos.filter(t => t.status === "completed").at(-1);
 const statusOrder = ["pending", "in_progress", "completed", "running", "done", "failed", "cancelled"];
@@ -49,46 +37,130 @@ function projectResult(name: string, action: unknown, text: string, details: unk
 function preview(text: string): string[] {
   return safeText(text).split("\n").filter(l => l.trim() && !/^[\s\[\]{}]+,?$/.test(l));
 }
-function resultComponent(text: string, details: unknown, view: View, expanded: boolean, partial: boolean, error: boolean, theme: Theme): Component {
-  return {
-    invalidate() {},
-    render(width) {
-      if (expanded) {
-        const extra = object(details) && Object.keys(details).length ? `\n${JSON.stringify(details, null, 2)}` : "";
-        return wrapTextWithAnsi(safeText(text + extra), Math.max(1, width)).map(l => clip(l, width));
-      }
-      let lines: string[];
-      if (view.kind === "todos") {
-        const picked = activeFirst(view.rows).slice(0, 3);
-        if (!picked.length) { const done = lastDone(view.rows); if (done) picked.push(done); }
-        lines = [counts(view.rows) || "No todos", ...picked.map(t => `${status(t.status, theme)} ${single(t.content)}`)];
-      }
-      else if (view.kind === "workers") lines = [counts(view.rows) || "No workers", ...view.rows.slice(0, 3).map(w => `${status(w.status, theme)} ${single(w.id)} ${single(w.agent)} ${single(w.error ?? w.model)}`)];
-      else lines = preview(view.text).slice(0, 4);
-      if (error || partial) lines.unshift(theme.fg(error ? "error" : "warning", error ? "Error" : "Partial"));
-      const artifact = safeText(text).match(/\[Truncated[^\n]*Full output: ([^\n]+)\]/)?.[1];
-      const failure = view.kind === "workers" ? view.rows.find(w => w.error)?.error : undefined;
-      lines = lines.slice(0, artifact || failure ? 3 : 4);
-      if (failure) lines.push(theme.fg("error", `Error: ${single(failure)}`));
-      if (artifact) lines.push(theme.fg("warning", `Full output: ${single(artifact)}`));
-      lines.push(theme.fg("dim", keyHint("app.tools.expand", "full result")));
-      return lines.map(l => clip(l, width));
-    },
-  };
+
+const skinFor = (theme?: Theme): Skin => ({ theme: theme ?? identityTheme, glyphs: glyphSet(uiPreferences.icons) });
+
+const status = (value: keyof GlyphSet["status"], theme?: Theme) => {
+  const entry = glyphSet(uiPreferences.icons).status[value];
+  const text = `${entry.glyph} ${entry.label}`;
+  return theme ? theme.fg(entry.color, text) : text;
+};
+
+const todoRow = (todo: Todo, skin: Skin): string => {
+  const { theme, glyphs } = skin;
+  const content = single(todo.content);
+  if (todo.status === "completed") return `${theme.fg("success", glyphs.checkbox.checked)} ${theme.fg("success", theme.strikethrough(content))}`;
+  if (todo.status === "in_progress") return `${theme.fg("accent", glyphs.checkbox.unchecked)} ${theme.fg("accent", theme.bold(content))}`;
+  return `${theme.fg("dim", glyphs.checkbox.unchecked)} ${theme.fg("dim", content)}`;
+};
+
+const workerRow = (worker: WorkerRecord, skin: Skin, width: number): string => {
+  const { theme, glyphs } = skin;
+  const readonly = worker.readonly ? theme.fg("muted", " [ro]") : "";
+  const model = width >= BUDGETS.modelAtWidth ? theme.fg("dim", ` · ${single(worker.model)}`) : "";
+  return `${theme.fg(glyphs.status[worker.status].color, glyphs.dot[worker.status])} ${theme.bold(single(worker.id.slice(0, 8)))} ${single(worker.agent)}${readonly}${model}`;
+};
+
+const pickCapped = <T>(items: readonly T[], budget: number, itemType: string, skin: Skin): { list: T[]; summary: string } => {
+  if (budget <= 0) return { list: [], summary: "" };
+  let show = Math.min(items.length, budget);
+  let summary = "";
+  if (items.length > show) {
+    if (show === budget) show -= 1;
+    summary = moreRow(items.length - show, itemType, skin);
+  }
+  return { list: items.slice(0, show), summary };
+};
+
+const todoTree = (rows: readonly Todo[], budget: number, skin: Skin): string[] => {
+  if (!rows.length) return [skin.theme.fg("muted", "No todos")];
+  const active = activeFirst(rows);
+  if (!active.length) return treeList({ items: [lastDone(rows)!], trailingSummary: "", renderItem: t => todoRow(t, skin) }, skin);
+  const picked = pickCapped(active, budget, "todo", skin);
+  return treeList({ items: picked.list, trailingSummary: picked.summary, renderItem: t => todoRow(t, skin) }, skin);
+};
+
+const workerTree = (rows: readonly WorkerRecord[], budget: number, skin: Skin, width: number): string[] => {
+  if (!rows.length) return [skin.theme.fg("muted", "No workers")];
+  const picked = pickCapped(rows, budget, "worker", skin);
+  return treeList({ items: picked.list, trailingSummary: picked.summary, renderItem: w => workerRow(w, skin, width) }, skin);
+};
+
+const cappedTree = <T>(items: readonly T[], itemType: string, renderItem: (item: T) => string, skin: Skin): string[] => {
+  const lines = treeList({ items, expanded: true, renderItem }, skin);
+  if (lines.length <= BUDGETS.expandedBody) return lines;
+  const shown = BUDGETS.expandedBody - 1;
+  return [...lines.slice(0, shown), `${skin.theme.fg("dim", skin.glyphs.tree.last)} ${skin.theme.fg("muted", moreRow(items.length - shown, itemType, skin))}`];
+};
+
+const expandHint = (skin: Skin) => skin.theme.fg("dim", keyHint("app.tools.expand", "full result"));
+
+function collapsedCard(name: string, view: View, text: string, width: number, error: boolean, partial: boolean, skin: Skin): string[] {
+  const base = name.replace("pstack_", "");
+  const state: CardState = error ? "error" : partial ? "warning" : "success";
+  const icon = error ? "failed" : partial ? "partial" : view.kind === "text" ? "info" : "done";
+  const badge = error || partial ? { label: error ? "Error" : "Partial", color: error ? ("error" as const) : ("warning" as const) } : undefined;
+  const header = statusLine({ icon, title: base, badge, meta: view.kind === "text" ? [] : [counts(view.rows)] }, skin);
+  const artifact = safeText(text).match(/\[Truncated[^\n]*Full output: ([^\n]+)\]/)?.[1];
+  const failure = view.kind === "workers" ? view.rows.find(w => w.error)?.error : undefined;
+  const budget = BUDGETS.collapsedResultRows - 2 - (artifact ? 1 : 0) - (failure ? 1 : 0);
+  const body = view.kind === "todos" ? todoTree(view.rows, budget, skin)
+    : view.kind === "workers" ? workerTree(view.rows, budget, skin, width)
+    : preview(view.text).slice(0, Math.max(0, budget));
+  const trailer = [
+    ...(failure ? [skin.theme.fg("error", `Error: ${single(failure)}`)] : []),
+    ...(artifact ? [skin.theme.fg("warning", `Full output: ${single(artifact)}`)] : []),
+  ];
+  return framedBlock({ header, state, sections: [{ lines: [...body, ...trailer] }], footerMeta: expandHint(skin), width }, skin).map(l => clip(l, width));
 }
-export function toolPresentation(name: string): Pick<ToolDefinition, "renderCall" | "renderResult"> {
+
+function expandedCard(name: string, view: View, text: string, details: unknown, width: number, skin: Skin): string[] {
+  const base = name.replace("pstack_", "");
+  const header = statusLine({ icon: view.kind === "text" ? "info" : "done", title: base, meta: view.kind === "text" ? [] : [counts(view.rows)] }, skin);
+  const inner = Math.max(1, Math.max(width, BUDGETS.frameMinWidth) - 4);
+  const sections: { label?: string; lines: string[] }[] = [];
+  if (view.kind === "todos" && view.rows.length) sections.push({ lines: cappedTree(view.rows, "todo", t => todoRow(t, skin), skin) });
+  if (view.kind === "workers" && view.rows.length) sections.push({ lines: cappedTree(view.rows, "worker", w => workerRow(w, skin, width), skin) });
+  const extra = object(details) && Object.keys(details).length ? `\n${JSON.stringify(details, null, 2)}` : "";
+  sections.push({ label: sections.length ? "output" : undefined, lines: wrapTextWithAnsi(safeText(text + extra), inner) });
+  return framedBlock({ header, state: "success", sections, width }, skin).map(l => clip(l, width));
+}
+
+export function toolPresentation(name: string): Pick<ToolDefinition, "renderCall" | "renderResult" | "renderShell"> {
   return {
+    renderShell: "self",
     renderCall(args, theme) {
+      const skin = skinFor(theme);
       const input = object(args) ? args : {};
       const base = name.replace("pstack_", "");
-      const arg = single(String(input.action ?? input.query ?? input.subagent_type ?? ""));
-      return { invalidate() {}, render: width => [clip(theme.fg("toolTitle", arg ? `${base} ${arg}` : base), width)] };
+      const description = single(String(input.action ?? input.query ?? input.subagent_type ?? ""));
+      const shape = { icon: "running" as const, title: base, description: description || undefined };
+      const rest = Object.fromEntries(Object.entries(input).filter(([key, value]) => value !== undefined && !["action", "query", "subagent_type"].includes(key)));
+      return {
+        invalidate() {},
+        render: width => {
+          const head = statusLine(shape, skin);
+          const meta = argsInline(rest, Math.max(0, width - visibleWidth(head) - 1));
+          return [clip(statusLine({ ...shape, meta: meta ? [meta] : undefined }, skin), width)];
+        },
+      };
     },
     renderResult(result, options, theme, context) {
       const text = result.content.filter(c => c.type === "text").map(c => c.text).join("\n");
       const partial = options.isPartial || context.isPartial;
       const view = partial || context.isError ? { kind: "text" as const, text } : projectResult(name, object(context.args) ? context.args.action : undefined, text, result.details);
-      return resultComponent(text, result.details, view, options.expanded, partial, context.isError, theme);
+      return {
+        invalidate() {},
+        render(width) {
+          const skin = skinFor(theme);
+          if (options.expanded) {
+            const extra = object(result.details) && Object.keys(result.details).length ? `\n${JSON.stringify(result.details, null, 2)}` : "";
+            if (partial || context.isError) return wrapTextWithAnsi(safeText(text + extra), Math.max(1, width)).map(l => clip(l, width));
+            return expandedCard(name, view, text, result.details, width, skin);
+          }
+          return collapsedCard(name, view, text, width, context.isError, partial, skin);
+        },
+      };
     },
   };
 }
@@ -259,7 +331,18 @@ export async function showWorkers(ctx: ExtensionContext, list: () => readonly Wo
   }));
 }
 export const messagePresentation: MessageRenderer = (message, options, theme) => {
+  const skin = skinFor(theme);
+  const t = skin.theme;
   const text = typeof message.content === "string" ? message.content : message.content.filter(c => c.type === "text").map(c => c.text).join("\n");
-  const component = resultComponent(text, message.details, { kind: "text", text }, options.expanded, false, false, theme);
-  return { invalidate: () => component.invalidate(), render: width => [clip(theme.fg("customMessageLabel", message.customType === "pstack-worker" ? "Worker notice" : "Pstack"), width), ...component.render(width)] };
+  const label = t.fg("customMessageLabel", t.bold(message.customType === "pstack-worker" ? "Worker notice" : "Pstack"));
+  const extra = object(message.details) && Object.keys(message.details).length ? `\n${JSON.stringify(message.details, null, 2)}` : "";
+  const component: Component = {
+    invalidate() {},
+    render: width => {
+      if (options.expanded) return wrapTextWithAnsi(safeText(text + extra), Math.max(1, width)).map(l => clip(l, width));
+      const rows = preview(text).slice(0, 4);
+      return rows.map((row, i) => `${t.fg("dim", i === rows.length - 1 ? skin.glyphs.tree.last : skin.glyphs.tree.branch)} ${t.fg("muted", skin.glyphs.bullet)} ${row}`).map(l => clip(l, width));
+    },
+  };
+  return { invalidate: () => component.invalidate(), render: width => [clip(label, width), ...component.render(width)] };
 };

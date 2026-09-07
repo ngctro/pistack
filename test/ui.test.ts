@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { initTheme, type Theme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { initTheme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { identityTheme } from "../extensions/visual.ts";
 import { TodoBrowser, WorkerBrowser, indicatorOptions, messagePresentation, safeText, syncPreferences, toolPresentation, todoWidget, uiPreferences, type Todo, type UiPreferences } from "../extensions/ui.ts";
 import { Config } from "../extensions/config.ts";
 import { Value } from "typebox/value";
@@ -10,7 +11,7 @@ import { output } from "../extensions/output.ts";
 
 initTheme("dark", false);
 type ToolRenderContext = Parameters<NonNullable<ToolDefinition["renderCall"]>>[2];
-const theme = { fg: (_color: string, text: string) => text } as Theme;
+const theme = identityTheme;
 const context = (args = {}, error = false, partial = false): ToolRenderContext => ({ args, state: {}, isError: error, isPartial: partial } as ToolRenderContext);
 const widths = [1, 20, 40, 80, 120];
 const todos: Todo[] = ["pending", "in_progress", "completed"].map((status, i) => ({ id: String(i), content: "café 界 👩‍💻\n".repeat(30), status } as Todo));
@@ -96,12 +97,12 @@ test("counts sort canonically, call titles omit empty args, expanded string deta
   const slots = toolPresentation("pstack_todos");
   const collapsed = slots.renderResult!(output(JSON.stringify([...todos].reverse())), { expanded: false, isPartial: false }, theme, context()).render(120);
   assert.match(collapsed[0], /1 pending · 1 in progress · 1 completed/);
-  assert.match(collapsed[1], /In progress/);
+  assert.match(collapsed[1], /☐/);
   const done = slots.renderResult!(output(JSON.stringify(todos.map(t => ({ ...t, status: "completed" })))), { expanded: false, isPartial: false }, theme, context()).render(120);
   assert.match(done[0], /3 completed/);
-  assert.match(done[1], /Completed/);
-  assert.match(slots.renderCall!({}, theme, context()).render(80)[0], /^todos$/);
-  assert.match(toolPresentation("pstack_workers").renderCall!({ action: "list" }, theme, context({ action: "list" })).render(80)[0], /^workers list$/);
+  assert.match(done[1], /☑/);
+  assert.match(slots.renderCall!({}, theme, context()).render(80)[0], /^[◐>] todos$/);
+  assert.match(toolPresentation("pstack_workers").renderCall!({ action: "list" }, theme, context({ action: "list" })).render(80)[0], /^[◐>] workers: list$/);
   const withStringDetails = slots.renderResult!(output(JSON.stringify(todos), "oops"), { expanded: true, isPartial: false }, theme, context()).render(1000).join("\n");
   assert.ok(!withStringDetails.includes('"oops"'));
 });
