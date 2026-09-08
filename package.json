@@ -1,6 +1,6 @@
 {
   "name": "@ngctro/pistack",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Native pi port of poteto's pstack engineering workflows, agents, and automation tools",
   "type": "module",
   "license": "MIT",
