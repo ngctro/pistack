@@ -2,7 +2,7 @@
 
 This port reproduces pstack workflows on pi. It does not load arbitrary Cursor plugins or reproduce the Cursor IDE.
 
-The comparison uses Cursor's public documentation and `cursor/plugins` revision `93b00b89ef425a9c1bac0d0b317dfc49c930ac99`. That revision still matched upstream HEAD during this review. The existing pstack skill set therefore needed no upstream refresh.
+The comparison uses Cursor's public documentation and `cursor/plugins` revision `71ed0d1076fec562c1b74ee353121a8d00f75382`. The pstack skill set is synced to that revision.
 
 ## Capability status
 
@@ -74,6 +74,6 @@ Agent discovery does not approve the child project. Automatically created worktr
 - [Cursor hooks](https://cursor.com/docs/hooks). JSON process contracts and lifecycle events.
 - [Cursor plugins reference](https://cursor.com/docs/reference/plugins). Manifests, components, variables, and discovery.
 - [Cursor plugins](https://cursor.com/docs/plugins). Marketplaces and portable Agent Plugins.
-- [Pinned upstream pstack](https://github.com/cursor/plugins/tree/93b00b89ef425a9c1bac0d0b317dfc49c930ac99/pstack).
+- [Pinned upstream pstack](https://github.com/cursor/plugins/tree/71ed0d1076fec562c1b74ee353121a8d00f75382/pstack).
 
 The Firecrawl Developer Index request was rejected because this IP requires an API key. The research used the primary Cursor documentation directly instead.

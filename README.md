@@ -4,7 +4,7 @@
 
 A native [pi](https://pi.dev) port of [poteto's pstack](https://github.com/cursor/plugins/tree/main/pstack): engineering playbooks, independent reviewers, parallel implementation, live verification, PR watching and durable automation.
 
-**51 skills, 23 playbooks, two agent personas.** All 45 pstack skills are retained. The only team-kit imports are `deslop`, `control-cli`, `control-ui`, and its referenced `verify-this`. Two new skills replace Cursor's built-in `create-skill` and `automate` flows.
+**53 skills, 23 playbooks, two agent personas.** All 47 upstream pstack skills are retained. The only team-kit imports are `deslop`, `control-cli`, `control-ui`, and its referenced `verify-this`. Two new skills replace Cursor's built-in `create-skill` and `automate` flows.
 
 ## Install
 
