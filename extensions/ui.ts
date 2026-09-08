@@ -352,8 +352,10 @@ export class WorkerBrowser {
       const view = windowed(rows, index, 10);
       const rendered = view.rows.map((w, i) => {
         const row = workerRow(w, skin, width);
-        const mark = skin.theme.fg(view.start + i === index ? "accent" : "dim", view.start + i === index ? skin.glyphs.select : " ");
-        return (Array.isArray(row) ? row : [row]).map(l => `${mark} ${l}`);
+        const selected = view.start + i === index;
+        const mark = skin.theme.fg(selected ? "accent" : "dim", selected ? skin.glyphs.select : " ");
+        const lines = Array.isArray(row) ? row : [row];
+        return lines.map((l, j) => `${j === 0 ? mark : " "} ${l}`);
       });
       let body: string[] = rendered.flat();
       while (body.length > 10 && rendered.length > 1) {
@@ -367,7 +369,7 @@ export class WorkerBrowser {
           body = rendered.flat();
         }
         dropped = view.rows.length - rendered.length;
-        body = [...body, skin.theme.fg("dim", `… ${dropped} more`)];
+        body = [...body, skin.theme.fg("dim", moreRow(dropped, "worker", skin))];
       }
       const header = statusLine({ title: "Workers", titleColor: "accent", meta: [counts(rows), `snapshot ${this.snapshot}`] }, skin);
       const footer = skin.theme.fg("dim", "Up/Down/j/k select, Enter details, r refresh, Esc/q close");
