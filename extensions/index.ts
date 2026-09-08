@@ -118,7 +118,7 @@ export default function pistack(pi: ExtensionAPI) {
         config.models = { ...config.models, [role]: panels.has(role) ? values : values[0] };
         writeConfig(config);
       }
-      notice(`${configPath()}\n${JSON.stringify(Object.fromEntries(roles.map(r => [r, modelChoices(config, r)])), null, 2)}\nAvailable models: ${available.join(", ")}. Changes apply immediately.\nNeed live app verification? Use /create-verification-skill.`);
+      notice(`${configPath()}\n${JSON.stringify(Object.fromEntries(roles.map(r => [r, modelChoices(config, r)])), null, 2)}\nAvailable models: ${available.join(", ")}. Changes apply immediately.\nNeed live app verification? Use /skill:create-verification-skill.`);
     },
   });
   pi.registerTool({ ...toolPresentation("pstack_models"), name: "pstack_models", label: "Pstack models", description: "List authenticated pi models and per-role selections. Never invent Cursor model slugs.", parameters: Type.Object({}), async execute(_id, _args, _signal, _update, ctx) { return output(JSON.stringify({ available: ctx.modelRegistry.getAvailable().map(m => ({ id: `${m.provider}/${m.id}`, reasoning: m.reasoning })), roles: Object.fromEntries(roles.map(r => [r, modelChoices(readConfig(), r)])) })); } });
