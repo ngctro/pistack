@@ -269,6 +269,10 @@ test("worker activity repaints an open workers overlay and stops after close", a
   await showWorkers(ctx, () => records);
   setWorkerActivity(id, "overlay work");
   assert.equal(renders, 1);
+  setWorkerActivity(id, "overlay work");
+  assert.equal(renders, 1);
+  setWorkerActivity("absent-id", undefined);
+  assert.equal(renders, 1);
   comp.handleInput("\x1b");
   assert.ok(finished);
   setWorkerActivity(id, "later work");
@@ -310,6 +314,9 @@ test("failed worker rows force an error border on collapsed and expanded cards",
   assert.ok(failedTop.includes("<error>"));
   assert.ok(errorTop.includes("<error>"));
   assert.ok(!cleanTop.includes("<error>"));
+  assert.ok(failedTop.includes("✘"));
+  assert.ok(!failedTop.includes("●"));
+  assert.ok(cleanTop.includes("●"));
   const expandedFailed = slots.renderResult!(output(JSON.stringify(failed)), { expanded: true, isPartial: false }, mark, context({ action: "list" })).render(80)[0];
   const expandedClean = slots.renderResult!(output(JSON.stringify(clean)), { expanded: true, isPartial: false }, mark, context({ action: "list" })).render(80)[0];
   assert.ok(expandedFailed.includes("<error>"));

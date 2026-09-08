@@ -178,7 +178,7 @@ export function argsInline(args: Record<string, unknown>, maxWidth: number): str
   if (!keys.length) return "";
   const budget = (index: number, remaining: number) => {
     let reserve = 0;
-    for (let j = index + 1; j < keys.length; j++) reserve += 2 + visibleWidth(keys[j]) + 3;
+    for (let j = index + 1; j < keys.length; j++) reserve += 2 + visibleWidth(keys[j]) + (typeof args[keys[j]] === "string" ? 4 : 3);
     return Math.max(1, Math.min(remaining - reserve, maxWidth));
   };
   const pieces: string[] = [];

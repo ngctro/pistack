@@ -39,8 +39,12 @@ export const workerActivity = new Map<string, string>();
 let requestOverlayRender: (() => void) | undefined;
 
 export function setWorkerActivity(id: string, activity: string | undefined): void {
-  if (activity === undefined) workerActivity.delete(id);
-  else if (workerActivity.get(id) !== activity) workerActivity.set(id, activity);
+  if (activity === undefined) {
+    if (!workerActivity.delete(id)) return;
+  } else {
+    if (workerActivity.get(id) === activity) return;
+    workerActivity.set(id, activity);
+  }
   requestOverlayRender?.();
 }
 
@@ -160,8 +164,10 @@ const expandHint = (skin: Skin) => skin.theme.fg("dim", keyHint("app.tools.expan
 function collapsedCard(name: string, view: View, text: string, width: number, error: boolean, partial: boolean, skin: Skin): string[] {
   const base = name.replace("pstack_", "");
   const state: CardState = viewState(view, error, partial);
-  const icon = error ? "failed" : partial ? "partial" : view.kind === "text" ? "info" : "done";
-  const badge = error || partial ? { label: error ? "Error" : "Partial", color: error ? ("error" as const) : ("warning" as const) } : undefined;
+  const failed = state === "error";
+  const progress = state === "warning";
+  const icon = failed ? "failed" : progress ? "partial" : view.kind === "text" ? "info" : "done";
+  const badge = failed ? { label: "Error", color: "error" as const } : progress ? { label: "Partial", color: "warning" as const } : undefined;
   const header = statusLine({ icon, title: base, badge, meta: view.kind === "text" ? [] : [counts(view.rows)] }, skin);
   const artifact = safeText(text).match(/\[Truncated[^\n]*Full output: ([^\n]+)\]/)?.[1];
   const failure = view.kind === "workers" ? view.rows.find(w => w.error)?.error : undefined;
@@ -178,8 +184,8 @@ function collapsedCard(name: string, view: View, text: string, width: number, er
 
 function expandedCard(name: string, view: View, text: string, details: unknown, width: number, error: boolean, partial: boolean, skin: Skin): string[] {
   const base = name.replace("pstack_", "");
-  const header = statusLine({ icon: view.kind === "text" ? "info" : "done", title: base, meta: view.kind === "text" ? [] : [counts(view.rows)] }, skin);
   const state: CardState = viewState(view, error, partial);
+  const header = statusLine({ icon: state === "error" ? "failed" : state === "warning" ? "partial" : view.kind === "text" ? "info" : "done", title: base, meta: view.kind === "text" ? [] : [counts(view.rows)] }, skin);
   const inner = Math.max(1, Math.max(width, BUDGETS.frameMinWidth) - 4);
   const sections: { label?: string; lines: string[] }[] = [];
   if (view.kind === "todos" && view.rows.length) sections.push({ lines: cappedTree(view.rows, "todo", t => todoRow(t, skin), skin) });

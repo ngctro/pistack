@@ -40,6 +40,7 @@ test("statusLine composes icon, title, description, badge, meta without newline 
 });
 
 test("treeList emits branch glyphs, summary rows and honors trailingSummary mode", () => {
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const items = ["a", "b", "c", "d"];
   for (const skin of [...skins, asciiSkin]) {
     const full = treeList({ items, renderItem: i => i }, skin);
@@ -48,7 +49,7 @@ test("treeList emits branch glyphs, summary rows and honors trailingSummary mode
     assert.ok(full[3].includes(skin.glyphs.tree.last));
     const capped = treeList({ items, maxCollapsed: 2, itemType: "todo", renderItem: i => i }, skin);
     assert.equal(capped.length, 3);
-    assert.match(capped[2], new RegExp(`^${skin.glyphs.tree.last} ${skin.glyphs.ellipsis} 2 more todos`));
+    assert.match(capped[2], new RegExp(`^${esc(skin.glyphs.tree.last)} ${esc(skin.glyphs.ellipsis)} 2 more todos`));
     const expanded = treeList({ items, expanded: true, maxCollapsed: 1, renderItem: i => i }, skin);
     assert.equal(expanded.length, 4);
     assert.ok(!expanded.some(l => l.includes("more")));
@@ -107,8 +108,9 @@ test("framedBlock embeds header and footer labels in bars, content inside border
 
 test("argsInline clips to width with ellipsis and formats scalars", () => {
   assert.equal(argsInline({ action: "list", id: "x" }, 60), 'action="list", id="x"');
-  assert.equal(stripTerminalSequences(argsInline({ a: "one two three four five six seven", b: "kept" }, 24)), 'a="one two three…", …');
+  assert.equal(stripTerminalSequences(argsInline({ a: "one two three four five six seven", b: "kept" }, 24)), 'a="one two thre…", b="…"');
   assert.equal(argsInline({ todos: [{}, {}, {}] }, 30), "todos=[3 items]");
+  assert.ok(stripTerminalSequences(argsInline({ aa: "1111111111", bb: "22" }, 18)).includes("bb="));
   assert.equal(argsInline({ cfg: { x: 1 } }, 30), "cfg={1 keys}");
   assert.equal(argsInline({ n: 5, flag: true }, 30), "n=5, flag=true");
   assert.equal(argsInline({}, 30), "");
