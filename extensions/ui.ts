@@ -1,31 +1,15 @@
 import { keyHint, type ExtensionContext, type MessageRenderer, type Theme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { matchesKey, stripTerminalSequences, truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import { readFileSync } from "node:fs";
 import type { WorkerRecord } from "./workers.ts";
+import { argsInline, BUDGETS, framedBlock, glyphSet, identityTheme, moreRow, safeText, single, statusLine, treeList, type CardState, type Skin } from "./visual.ts";
+import type { Todo } from "./types.ts";
 
-export type Todo = { id: string; content: string; status: "pending" | "in_progress" | "completed" };
+export type { Todo } from "./types.ts";
 export type UiPreferences = { icons: "nerd" | "ascii"; motion: "off" | "active" };
 export const uiPreferences: UiPreferences = { icons: "nerd", motion: "active" };
-const styles = {
-  pending: ["", "o", "Pending", "muted"],
-  in_progress: ["", ">", "In progress", "accent"],
-  completed: ["", "+", "Completed", "success"],
-  running: ["", ">", "Running", "accent"],
-  done: ["", "+", "Done", "success"],
-  failed: ["", "!", "Failed", "error"],
-  cancelled: ["", "-", "Cancelled", "warning"],
-} as const satisfies Record<Todo["status"] | WorkerRecord["status"], readonly [string, string, string, Parameters<Theme["fg"]>[0]]>;
 
-export function safeText(text: string): string {
-  return stripTerminalSequences(text).replace(/\r\n?/g, "\n").replace(/\t/g, "  ").replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, "");
-}
-const single = (text: string) => safeText(text).replace(/[\n\u2028\u2029]/g, " ");
 const clip = (text: string, width: number) => truncateToWidth(text, Math.max(0, width), "…");
-const status = (value: keyof typeof styles, theme?: Theme) => {
-  const [nerd, ascii, label, color] = styles[value];
-  const text = `${uiPreferences.icons === "nerd" ? nerd : ascii} ${label}`;
-  return theme ? theme.fg(color, text) : text;
-};
 const activeFirst = (todos: readonly Todo[]) => [...todos.filter(t => t.status === "in_progress"), ...todos.filter(t => t.status === "pending")];
 const lastDone = (todos: readonly Todo[]) => todos.filter(t => t.status === "completed").at(-1);
 const statusOrder = ["pending", "in_progress", "completed", "running", "done", "failed", "cancelled"];
@@ -49,46 +33,213 @@ function projectResult(name: string, action: unknown, text: string, details: unk
 function preview(text: string): string[] {
   return safeText(text).split("\n").filter(l => l.trim() && !/^[\s\[\]{}]+,?$/.test(l));
 }
-function resultComponent(text: string, details: unknown, view: View, expanded: boolean, partial: boolean, error: boolean, theme: Theme): Component {
-  return {
-    invalidate() {},
-    render(width) {
-      if (expanded) {
-        const extra = object(details) && Object.keys(details).length ? `\n${JSON.stringify(details, null, 2)}` : "";
-        return wrapTextWithAnsi(safeText(text + extra), Math.max(1, width)).map(l => clip(l, width));
-      }
-      let lines: string[];
-      if (view.kind === "todos") {
-        const picked = activeFirst(view.rows).slice(0, 3);
-        if (!picked.length) { const done = lastDone(view.rows); if (done) picked.push(done); }
-        lines = [counts(view.rows) || "No todos", ...picked.map(t => `${status(t.status, theme)} ${single(t.content)}`)];
-      }
-      else if (view.kind === "workers") lines = [counts(view.rows) || "No workers", ...view.rows.slice(0, 3).map(w => `${status(w.status, theme)} ${single(w.id)} ${single(w.agent)} ${single(w.error ?? w.model)}`)];
-      else lines = preview(view.text).slice(0, 4);
-      if (error || partial) lines.unshift(theme.fg(error ? "error" : "warning", error ? "Error" : "Partial"));
-      const artifact = safeText(text).match(/\[Truncated[^\n]*Full output: ([^\n]+)\]/)?.[1];
-      const failure = view.kind === "workers" ? view.rows.find(w => w.error)?.error : undefined;
-      lines = lines.slice(0, artifact || failure ? 3 : 4);
-      if (failure) lines.push(theme.fg("error", `Error: ${single(failure)}`));
-      if (artifact) lines.push(theme.fg("warning", `Full output: ${single(artifact)}`));
-      lines.push(theme.fg("dim", keyHint("app.tools.expand", "full result")));
-      return lines.map(l => clip(l, width));
-    },
-  };
+
+export const workerActivity = new Map<string, string>();
+
+let requestOverlayRender: (() => void) | undefined;
+
+export function setWorkerActivity(id: string, activity: string | undefined): void {
+  if (activity === undefined) {
+    if (!workerActivity.delete(id)) return;
+  } else {
+    if (workerActivity.get(id) === activity) return;
+    workerActivity.set(id, activity);
+  }
+  requestOverlayRender?.();
 }
-export function toolPresentation(name: string): Pick<ToolDefinition, "renderCall" | "renderResult"> {
+
+export function settleWorkerActivity(id: string): void {
+  workerActivity.delete(id);
+  requestOverlayRender?.();
+}
+
+export function workerActivityOf(worker: { id: string; status: string }): string {
+  const activity = workerActivity.get(worker.id);
+  if (worker.status !== "running") {
+    if (activity !== undefined) workerActivity.delete(worker.id);
+    return "";
+  }
+  return activity ?? "";
+}
+
+const skinFor = (theme?: Theme): Skin => ({ theme: theme ?? identityTheme, glyphs: glyphSet(uiPreferences.icons) });
+
+const todoRow = (todo: Todo, skin: Skin): string => {
+  const { theme, glyphs } = skin;
+  const content = single(todo.content);
+  if (todo.status === "completed") return `${theme.fg("success", glyphs.checkbox.checked)} ${theme.fg("success", theme.strikethrough(content))}`;
+  if (todo.status === "in_progress") return `${theme.fg("accent", glyphs.checkbox.unchecked)} ${theme.fg("accent", theme.bold(content))}`;
+  return `${theme.fg("dim", glyphs.checkbox.unchecked)} ${theme.fg("dim", content)}`;
+};
+
+const workerRow = (worker: WorkerRecord, skin: Skin, width: number): string | string[] => {
+  const { theme, glyphs } = skin;
+  const readonly = worker.readonly ? theme.fg("muted", " [ro]") : "";
+  const model = width >= BUDGETS.modelAtWidth ? theme.fg("dim", ` · ${single(worker.model)}`) : "";
+  const head = `${theme.fg(glyphs.status[worker.status].color, glyphs.dot[worker.status])} ${theme.bold(single(worker.id.slice(0, 8)))} ${single(worker.agent)}${readonly}${model}`;
+  const activity = workerActivityOf(worker);
+  if (!activity) return head;
+  return [head, `${theme.fg("dim", glyphs.tree.last)} ${theme.fg("dim", clip(single(activity), 40))}`];
+};
+
+const cardState: Record<Todo["status"] | WorkerRecord["status"], CardState> = { pending: "pending", in_progress: "running", completed: "success", running: "running", done: "success", failed: "error", cancelled: "warning" };
+
+const viewState = (view: View, error: boolean, partial: boolean): CardState => {
+  if (error) return "error";
+  if (partial) return "warning";
+  if (view.kind === "workers") {
+    if (view.rows.some(w => w.status === "failed" || w.error)) return "error";
+    if (view.rows.some(w => w.status === "running")) return "running";
+  }
+  return "success";
+};
+
+const stateIcon = (state: CardState, kind: View["kind"]) => state === "error" ? "failed" : state === "warning" ? "partial" : state === "running" ? "running" : kind === "text" ? "info" : "done";
+
+const detailCard = (header: string, state: CardState, sections: { label?: string; lines: readonly string[] }[], footer: string, width: number, skin: Skin): string[] => {
+  let room = BUDGETS.detailBody;
+  const capped = sections.map(s => {
+    const lines = s.label ? s.lines.slice(0, Math.max(0, room - 1)) : s.lines.slice(0, room);
+    room -= lines.length + (s.label ? 1 : 0);
+    return { ...s, lines };
+  });
+  return framedBlock({ header, state, sections: capped, footerMeta: footer, width }, skin).map(l => clip(l, width));
+};
+
+const windowed = <T>(rows: readonly T[], index: number, count: number): { start: number; rows: T[] } => {
+  const start = Math.max(0, Math.min(index - 4, rows.length - count));
+  return { start, rows: rows.slice(start, start + count) };
+};
+
+const pickCapped = <T>(items: readonly T[], budget: number, itemType: string, skin: Skin): { list: T[]; summary: string } => {
+  if (budget <= 0) return { list: [], summary: "" };
+  let show = Math.min(items.length, budget);
+  let summary = "";
+  if (items.length > show) {
+    if (show === budget) show -= 1;
+    summary = moreRow(items.length - show, itemType, skin);
+  }
+  return { list: items.slice(0, show), summary };
+};
+
+const todoTree = (rows: readonly Todo[], budget: number, skin: Skin): string[] => {
+  if (!rows.length) return [skin.theme.fg("muted", "No todos")];
+  const active = activeFirst(rows);
+  if (!active.length) return treeList({ items: [lastDone(rows)!], trailingSummary: "", renderItem: t => todoRow(t, skin) }, skin);
+  const picked = pickCapped(active, budget, "todo", skin);
+  return treeList({ items: picked.list, trailingSummary: picked.summary, renderItem: t => todoRow(t, skin) }, skin);
+};
+
+const workerTree = (rows: readonly WorkerRecord[], budget: number, skin: Skin, width: number): string[] => {
+  if (!rows.length) return [skin.theme.fg("muted", "No workers")];
+  if (budget <= 0) return [];
+  const cost = (w: WorkerRecord) => 1 + (workerActivityOf(w) ? 1 : 0);
+  const total = rows.reduce((n, w) => n + cost(w), 0);
+  if (total <= budget) return treeList({ items: rows, trailingSummary: "", renderItem: w => workerRow(w, skin, width) }, skin);
+  const room = Math.max(0, budget - 1);
+  const picked: WorkerRecord[] = [];
+  let used = 0;
+  for (const w of rows) {
+    const c = cost(w);
+    if (used + c > room) break;
+    picked.push(w);
+    used += c;
+  }
+  const remaining = rows.length - picked.length;
+  return treeList({ items: picked, trailingSummary: remaining > 0 ? moreRow(remaining, "worker", skin) : "", renderItem: w => workerRow(w, skin, width) }, skin);
+};
+
+const cappedTree = <T>(items: readonly T[], itemType: string, renderItem: (item: T) => string | string[], skin: Skin): string[] => {
+  const blocks = items.map(item => {
+    const rendered = renderItem(item);
+    const rows = Array.isArray(rendered) ? rendered : rendered ? [rendered] : [];
+    return { item, rows };
+  }).filter(b => b.rows.length);
+  if (blocks.reduce((n, b) => n + b.rows.length, 0) <= BUDGETS.expandedBody) {
+    return treeList({ items: blocks.map(b => b.item), expanded: true, renderItem }, skin);
+  }
+  const kept: typeof blocks = [];
+  let used = 0;
+  for (const b of blocks) {
+    if (used + b.rows.length > BUDGETS.expandedBody - 1) break;
+    kept.push(b);
+    used += b.rows.length;
+  }
+  const remainder = blocks.length - kept.length;
+  return treeList({ items: kept.map(b => b.item), maxCollapsed: Math.max(kept.length, 1), trailingSummary: moreRow(remainder, itemType, skin), renderItem }, skin);
+};
+
+const expandHint = (skin: Skin) => skin.theme.fg("dim", keyHint("app.tools.expand", "full result"));
+
+function collapsedCard(name: string, view: View, text: string, width: number, error: boolean, partial: boolean, skin: Skin): string[] {
+  const base = name.replace("pstack_", "");
+  const state: CardState = viewState(view, error, partial);
+  const failed = state === "error";
+  const progress = state === "warning";
+  const icon = stateIcon(state, view.kind);
+  const badge = failed ? { label: "Error", color: "error" as const } : progress ? { label: "Partial", color: "warning" as const } : undefined;
+  const header = statusLine({ icon, title: base, badge, meta: view.kind === "text" ? [] : [counts(view.rows)] }, skin);
+  const artifact = safeText(text).match(/\[Truncated[^\n]*Full output: ([^\n]+)\]/)?.[1];
+  const failure = view.kind === "workers" ? view.rows.find(w => w.error)?.error : undefined;
+  const budget = BUDGETS.collapsedResultRows - 2 - (artifact ? 1 : 0) - (failure ? 1 : 0);
+  const body = view.kind === "todos" ? todoTree(view.rows, budget, skin)
+    : view.kind === "workers" ? workerTree(view.rows, budget, skin, width)
+    : preview(view.text).slice(0, Math.max(0, budget));
+  const trailer = [
+    ...(failure ? [skin.theme.fg("error", `Error: ${single(failure)}`)] : []),
+    ...(artifact ? [skin.theme.fg("warning", `Full output: ${single(artifact)}`)] : []),
+  ];
+  return framedBlock({ header, state, sections: [{ lines: [...body, ...trailer] }], footerMeta: expandHint(skin), width }, skin).map(l => clip(l, width));
+}
+
+function expandedCard(name: string, view: View, text: string, details: unknown, width: number, error: boolean, partial: boolean, skin: Skin): string[] {
+  const base = name.replace("pstack_", "");
+  const state: CardState = viewState(view, error, partial);
+  const header = statusLine({ icon: stateIcon(state, view.kind), title: base, meta: view.kind === "text" ? [] : [counts(view.rows)] }, skin);
+  const inner = Math.max(1, Math.max(width, BUDGETS.frameMinWidth) - 4);
+  const sections: { label?: string; lines: string[] }[] = [];
+  if (view.kind === "todos" && view.rows.length) sections.push({ lines: cappedTree(view.rows, "todo", t => todoRow(t, skin), skin) });
+  if (view.kind === "workers" && view.rows.length) sections.push({ lines: cappedTree(view.rows, "worker", w => workerRow(w, skin, width), skin) });
+  const extra = object(details) && Object.keys(details).length ? `\n${JSON.stringify(details, null, 2)}` : "";
+  sections.push({ label: sections.length ? "output" : undefined, lines: wrapTextWithAnsi(safeText(text + extra), inner) });
+  return framedBlock({ header, state, sections, width }, skin).map(l => clip(l, width));
+}
+
+export function toolPresentation(name: string): Pick<ToolDefinition, "renderCall" | "renderResult" | "renderShell"> {
   return {
+    renderShell: "self",
     renderCall(args, theme) {
+      const skin = skinFor(theme);
       const input = object(args) ? args : {};
       const base = name.replace("pstack_", "");
-      const arg = single(String(input.action ?? input.query ?? input.subagent_type ?? ""));
-      return { invalidate() {}, render: width => [clip(theme.fg("toolTitle", arg ? `${base} ${arg}` : base), width)] };
+      const description = single(String(input.action ?? input.query ?? input.subagent_type ?? ""));
+      const shape = { icon: "running" as const, title: base, description: description || undefined };
+      const rest = Object.fromEntries(Object.entries(input).filter(([key, value]) => value !== undefined && !["action", "query", "subagent_type"].includes(key)));
+      return {
+        invalidate() {},
+        render: width => {
+          const head = statusLine(shape, skin);
+          const meta = argsInline(rest, Math.max(0, width - visibleWidth(head) - 1));
+          return [clip(statusLine({ ...shape, meta: meta ? [meta] : undefined }, skin), width)];
+        },
+      };
     },
     renderResult(result, options, theme, context) {
       const text = result.content.filter(c => c.type === "text").map(c => c.text).join("\n");
       const partial = options.isPartial || context.isPartial;
       const view = partial || context.isError ? { kind: "text" as const, text } : projectResult(name, object(context.args) ? context.args.action : undefined, text, result.details);
-      return resultComponent(text, result.details, view, options.expanded, partial, context.isError, theme);
+      return {
+        invalidate() {},
+        render(width) {
+          const skin = skinFor(theme);
+          if (options.expanded) {
+            const extra = object(result.details) && Object.keys(result.details).length ? `\n${JSON.stringify(result.details, null, 2)}` : "";
+            if (partial || context.isError) return wrapTextWithAnsi(safeText(text + extra), Math.max(1, width)).map(l => clip(l, width));
+            return expandedCard(name, view, text, result.details, width, context.isError, partial, skin);
+          }
+          return collapsedCard(name, view, text, width, context.isError, partial, skin);
+        },
+      };
     },
   };
 }
@@ -98,15 +249,24 @@ export function todoWidget(read: () => readonly Todo[], theme?: Theme): Componen
     render(width) {
       const todos = read();
       if (!todos.length) return [];
-      const completed = todos.filter(t => t.status === "completed").length;
-      const filled = Math.round(8 * completed / todos.length);
-      const header = `Todos ${completed}/${todos.length} completed [${"#".repeat(filled)}${"-".repeat(8 - filled)}]`;
+      const skin = skinFor(theme);
+      const { theme: t, glyphs } = skin;
+      const closed = todos.filter(x => x.status === "completed").length;
       const active = activeFirst(todos);
-      const shown = active.slice(0, 3);
-      const done = lastDone(todos);
-      const rows = shown.length ? shown : done ? [done] : [];
-      const extra = active.length - shown.length;
-      return [header, ...rows.map(t => `${status(t.status, theme)} ${single(t.content)}`), extra > 0 ? `+${extra} more · /pstack-todos` : "/pstack-todos"].map(l => clip(l, width));
+      const shown = active.slice(0, BUDGETS.widgetTaskRows);
+      const lead = shown.length < BUDGETS.widgetTaskRows ? lastDone(todos) : undefined;
+      const rows = lead ? [lead, ...shown] : shown;
+      const pathLen = rows.length + BUDGETS.tailCells;
+      let filled = Math.round((closed / todos.length) * pathLen);
+      if (closed > 0) filled = Math.max(filled, 1);
+      if (closed < todos.length) filled = Math.min(filled, pathLen - 1);
+      const header = `${t.fg("accent", t.bold("Todos"))} ${t.fg("dim", `${closed}/${todos.length} completed`)}`;
+      const taskRows = rows.map((todo, i) => ` ${t.fg(i < filled ? "accent" : "dim", glyphs.tree.branch)} ${todoRow(todo, skin)}`);
+      const lit = Math.max(0, Math.min(filled - rows.length, BUDGETS.tailCells));
+      const tail = [t.fg(lit > 0 ? "accent" : "dim", glyphs.tree.hook), ...Array.from({ length: BUDGETS.tailCells - 1 }, (_, j) => t.fg(j < lit - 1 ? "accent" : "dim", glyphs.tree.horizontal))].join("");
+      const hidden = active.length - shown.length;
+      const hint = t.fg("dim", `${hidden > 0 ? ` ${glyphs.ellipsis} ${hidden} more` : ""} · /pstack-todos`);
+      return [header, ...taskRows, tail + hint].map(l => clip(l, width));
     },
   };
 }
@@ -159,19 +319,19 @@ export class TodoBrowser {
     const index = Math.max(0, rows.findIndex(t => t.id === this.selected));
     const todo = rows[index];
     if (!todo) return [clip("No todos", width)];
+    const skin = skinFor(theme);
     if (!this.detail) {
-      const start = Math.max(0, Math.min(index - 4, rows.length - 10));
-      const lines = [`Todos ${rows.filter(t => t.status === "completed").length}/${rows.length} completed`];
-      rows.slice(start, start + 10).forEach((t, i) => {
-        lines.push(`${start + i === index ? "> " : "  "}${status(t.status, theme)} ${single(t.content)}`);
-      });
-      lines.push("Up/Down/j/k select, Enter details, Esc/q close");
-      return lines.map(l => clip(l, width));
+      const view = windowed(rows, index, 10);
+      const header = statusLine({ title: "Todos", titleColor: "accent", meta: [`${rows.filter(t => t.status === "completed").length}/${rows.length} completed`] }, skin);
+      const body = view.rows.map((t, i) => `${skin.theme.fg(view.start + i === index ? "accent" : "dim", view.start + i === index ? skin.glyphs.select : " ")} ${todoRow(t, skin)}`);
+      const footer = skin.theme.fg("dim", "Up/Down/j/k select, Enter details, Esc/q close");
+      return [header, ...body, footer].map(l => clip(l, width));
     }
-    const body = wrapTextWithAnsi(safeText(todo.content), Math.max(1, width)).map(l => clip(l, width));
-    const at = Math.min(this.scroll, Math.max(0, body.length - 12));
-    const page = body.slice(at, at + 12);
-    return [`${status(todo.status, theme)} ${single(todo.id)}`, ...page, `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length}, Up/Down/j/k scroll, Esc/q back`].map(l => clip(l, width));
+    const header = statusLine({ icon: todo.status, title: single(todo.content) }, skin);
+    const body = wrapTextWithAnsi(safeText(todo.content), Math.max(1, width - 4));
+    const at = Math.min(this.scroll, Math.max(0, body.length - BUDGETS.detailBody));
+    const page = body.slice(at, at + BUDGETS.detailBody);
+    return detailCard(header, cardState[todo.status], [{ lines: page.map(l => clip(l, Math.max(1, width - 4))) }], `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length} · Up/Down scroll · Esc back`, width, skin);
   }
 }
 export const defaultReadReport = (record: WorkerRecord): string => {
@@ -223,43 +383,101 @@ export class WorkerBrowser {
     const index = Math.max(0, rows.findIndex(w => w.id === this.selected));
     const worker = rows[index];
     if (!worker) return [clip("No workers", width)];
+    const skin = skinFor(theme);
     if (!this.detail) {
-      const start = Math.max(0, Math.min(index - 4, rows.length - 10));
-      const lines = [`Workers ${counts(rows)} (snapshot ${this.snapshot})`];
-      rows.slice(start, start + 10).forEach((w, i) => {
-        lines.push(`${start + i === index ? "> " : "  "}${status(w.status, theme)} ${single(w.id.slice(0, 8))} ${single(w.agent)}${width >= 60 ? ` ${single(w.model)}` : ""}`);
+      const view = windowed(rows, index, 10);
+      const rendered = view.rows.map((w, i) => {
+        const row = workerRow(w, skin, width);
+        const selected = view.start + i === index;
+        const mark = skin.theme.fg(selected ? "accent" : "dim", selected ? skin.glyphs.select : " ");
+        const lines = Array.isArray(row) ? row : [row];
+        return { lines: lines.map((l, j) => `${j === 0 ? mark : " "} ${l}`), selected };
       });
-      lines.push("Up/Down/j/k select, Enter details, r refresh, Esc/q close");
-      return lines.map(l => clip(l, width));
+      const flatBody = () => rendered.flatMap(r => r.lines);
+      const dropLastUnselected = (): boolean => {
+        for (let i = rendered.length - 1; i >= 0; i--) {
+          if (!rendered[i].selected) { rendered.splice(i, 1); return true; }
+        }
+        return false;
+      };
+      let body: string[] = flatBody();
+      while (body.length > 10 && rendered.length > 1) {
+        if (!dropLastUnselected()) break;
+        body = flatBody();
+      }
+      let dropped = view.rows.length - rendered.length;
+      if (dropped > 0) {
+        while (body.length >= 10 && rendered.length > 1) {
+          if (!dropLastUnselected()) break;
+          body = flatBody();
+        }
+        dropped = view.rows.length - rendered.length;
+        body = [...body, skin.theme.fg("dim", moreRow(dropped, "worker", skin))];
+      }
+      const header = statusLine({ title: "Workers", titleColor: "accent", meta: [counts(rows), `snapshot ${this.snapshot}`] }, skin);
+      const footer = skin.theme.fg("dim", "Up/Down/j/k select, Enter details, r refresh, Esc/q close");
+      return [header, ...body, footer].map(l => clip(l, width));
     }
-    const meta = [`Worker ${single(worker.id)}`, `${status(worker.status, theme)} ${worker.readonly ? "read-only" : "writable"} ${single(worker.agent)}`, `model ${single(worker.model)}`, `cwd ${single(worker.cwd)}`, `report ${single(worker.report)}`, `session ${single(worker.session)}`];
-    if (worker.error) meta.push(`Error: ${single(worker.error)}`);
+    const header = statusLine({ icon: worker.status, title: `worker ${single(worker.id.slice(0, 8))}`, badge: worker.readonly ? { label: "ro", color: "muted" } : undefined, meta: [single(worker.model)] }, skin);
+    const meta = [`${skin.theme.fg("dim", "agent")} ${single(worker.agent)}`, `${skin.theme.fg("dim", "cwd")} ${single(worker.cwd)}`, `${skin.theme.fg("dim", "report")} ${single(worker.report)}`, `${skin.theme.fg("dim", "session")} ${single(worker.session)}`];
+    if (worker.error) meta.push(skin.theme.fg("error", `Error: ${single(worker.error)}`));
     let report: string;
     try { report = this.readReport(worker); } catch { report = `Report unreadable\n${worker.report}`; }
-    const body = wrapTextWithAnsi(report, Math.max(1, width)).map(l => clip(l, width));
-    const at = Math.min(this.scroll, Math.max(0, body.length - 8));
-    const page = body.slice(at, at + 8);
-    return [...meta, "Report", ...page, `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length}, Up/Down/j/k scroll, Esc/q back`].map(l => clip(l, width));
+    const body = wrapTextWithAnsi(report, Math.max(1, width - 4));
+    const pageSize = Math.max(0, BUDGETS.detailBody - meta.length - 1);
+    const at = Math.min(this.scroll, Math.max(0, body.length - pageSize));
+    const page = body.slice(at, at + pageSize);
+    return detailCard(header, cardState[worker.status], [{ lines: meta.map(l => clip(l, Math.max(1, width - 4))) }, { label: "Report", lines: page.map(l => clip(l, Math.max(1, width - 4))) }], `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length} · Up/Down scroll · Esc back`, width, skin);
   }
 }
 export async function showTodos(ctx: ExtensionContext, read: () => readonly Todo[]): Promise<void> {
   const browser = new TodoBrowser(read);
-  await ctx.ui.custom<void>((tui, theme, _kb, done) => ({
-    render: width => browser.render(width, theme),
-    handleInput: data => { if (browser.handleInput(data) === "close") done(); else tui.requestRender(); },
-    invalidate() {},
-  }));
+  await ctx.ui.custom<void>((tui, theme, _kb, done) => {
+    const notify = () => tui.requestRender();
+    requestOverlayRender = notify;
+    const finish = () => {
+      if (requestOverlayRender === notify) requestOverlayRender = undefined;
+      done();
+    };
+    return {
+      render: width => browser.render(width, theme),
+      handleInput: data => { if (browser.handleInput(data) === "close") finish(); else tui.requestRender(); },
+      invalidate() {},
+    };
+  });
 }
 export async function showWorkers(ctx: ExtensionContext, list: () => readonly WorkerRecord[]): Promise<void> {
   const browser = new WorkerBrowser(list);
-  await ctx.ui.custom<void>((tui, theme, _kb, done) => ({
-    render: width => browser.render(width, theme),
-    handleInput: data => { if (browser.handleInput(data) === "close") done(); else tui.requestRender(); },
-    invalidate() {},
-  }));
+  await ctx.ui.custom<void>((tui, theme, _kb, done) => {
+    const notify = () => tui.requestRender();
+    requestOverlayRender = notify;
+    const finish = () => {
+      if (requestOverlayRender === notify) requestOverlayRender = undefined;
+      done();
+    };
+    return {
+      render: width => browser.render(width, theme),
+      handleInput: data => { if (browser.handleInput(data) === "close") finish(); else tui.requestRender(); },
+      invalidate() {},
+    };
+  });
 }
 export const messagePresentation: MessageRenderer = (message, options, theme) => {
+  const skin = skinFor(theme);
+  const t = skin.theme;
   const text = typeof message.content === "string" ? message.content : message.content.filter(c => c.type === "text").map(c => c.text).join("\n");
-  const component = resultComponent(text, message.details, { kind: "text", text }, options.expanded, false, false, theme);
-  return { invalidate: () => component.invalidate(), render: width => [clip(theme.fg("customMessageLabel", message.customType === "pstack-worker" ? "Worker notice" : "Pstack"), width), ...component.render(width)] };
+  const label = t.fg("customMessageLabel", t.bold(message.customType === "pstack-worker" ? "Worker notice" : "Pstack"));
+  const extra = object(message.details) && Object.keys(message.details).length ? `\n${JSON.stringify(message.details, null, 2)}` : "";
+  const component: Component = {
+    invalidate() {},
+    render: width => {
+      if (options.expanded) return wrapTextWithAnsi(safeText(text + extra), Math.max(1, width)).map(l => clip(l, width));
+      const lines = preview(text);
+      const shown = lines.slice(0, 4);
+      const rows = shown.map((row, i) => `${t.fg("dim", i === shown.length - 1 ? skin.glyphs.tree.last : skin.glyphs.tree.branch)} ${t.fg("muted", skin.glyphs.bullet)} ${row}`);
+      if (lines.length > shown.length || extra !== "") rows.push(expandHint(skin));
+      return rows.map(l => clip(l, width));
+    },
+  };
+  return { invalidate: () => component.invalidate(), render: width => [clip(label, width), ...component.render(width)] };
 };
