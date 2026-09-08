@@ -11,7 +11,7 @@ A native [pi](https://pi.dev) port of [poteto's pstack](https://github.com/curso
 Requires **pi 0.85+, Node 22.18+, Git**, and an authenticated pi model. Review the code first: extensions and workers run with your OS permissions.
 
 ```sh
-pi install git:github.com/ngctro/pistack@v0.1.1
+pi install git:github.com/ngctro/pistack
 ```
 
 Start pi, or `/reload` an existing session:
@@ -29,7 +29,7 @@ For project-local installation, add `-l`. For development, `npm ci` then `pi -e 
 
 | Workflow | pi implementation |
 | --- | --- |
-| Skill commands | `/arena`, `/swarm`, `/architect`, `/interrogate`, `/reflect`, `/recall`, `/why`, and every other ordinary skill; also `/skill:name` |
+| Skill commands | Every ordinary skill via `/skill:name` |
 | Persistent mode | `/poteto-mode`, native session entries and status; `/poteto-mode off` |
 | Independent workers | `pstack_task`: real pi RPC processes, own context/session, writable git worktrees, model roles, background completion wakes |
 | Worker control | `pstack_workers`: list, wait, cancel, steer, resume; reports and worktrees retained |
