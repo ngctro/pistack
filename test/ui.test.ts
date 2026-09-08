@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { initTheme, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import { glyphSet, identityTheme, safeText } from "../extensions/visual.ts";
 import { TodoBrowser, WorkerBrowser, indicatorOptions, messagePresentation, setWorkerActivity, settleWorkerActivity, showWorkers, syncPreferences, toolPresentation, todoWidget, uiPreferences, workerActivity, type Todo, type UiPreferences } from "../extensions/ui.ts";
 import { Config } from "../extensions/config.ts";
@@ -74,12 +74,16 @@ test("todo widget stays within five physical rows and reads fresh state", () => 
   assert.match(lines[1], /☐/);
   assert.match(lines[2], /☐/);
   assert.match(lines[4], /1 more.*\/pstack-todos/);
+  const plain = lines.map(stripTerminalSequences);
+  assert.ok(plain[1].startsWith(" ├"));
+  assert.ok(plain[4].startsWith(" ╰"));
   assert.deepEqual(rows, before);
   rows = rows.map(t => ({ ...t, status: "completed" }));
   const idle = widget.render(80);
   assert.equal(idle.length, 3);
   assert.match(idle[1], /☑/);
   assert.match(idle[2], /\/pstack-todos/);
+  assert.ok(stripTerminalSequences(idle[2]).startsWith(" ╰"));
   rows = [];
   assert.deepEqual(widget.render(80), []);
 });

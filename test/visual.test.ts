@@ -138,6 +138,8 @@ test("moreRow honors the skin ellipsis and quoted args stay within budget", () =
 test("argsInline sanitizes control sequences in string scalars", () => {
   const line = argsInline({ cmd: "\x1b[31mred\x1b[0m\x07bad" }, 60);
   assert.ok(!line.includes("\x1b") && !line.includes("\x07"));
+  const truncated = argsInline({ prompt: "I am a very long prompt string that will definitely be truncated at this width budget for sure", readonly: false, run_in_background: true }, 120);
+  assert.ok(!truncated.includes("\x1b"));
 });
 
 test("treeList gives the hook to the last rendered row and escapes arg quotes", () => {

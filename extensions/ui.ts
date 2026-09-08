@@ -266,7 +266,7 @@ export function todoWidget(read: () => readonly Todo[], theme?: Theme): Componen
       const tail = [t.fg(lit > 0 ? "accent" : "dim", glyphs.tree.hook), ...Array.from({ length: BUDGETS.tailCells - 1 }, (_, j) => t.fg(j < lit - 1 ? "accent" : "dim", glyphs.tree.horizontal))].join("");
       const hidden = active.length - shown.length;
       const hint = t.fg("dim", `${hidden > 0 ? ` ${glyphs.ellipsis} ${hidden} more` : ""} · /pstack-todos`);
-      return [header, ...taskRows, tail + hint].map(l => clip(l, width));
+      return [header, ...taskRows, ` ${tail}${hint}`].map(l => clip(l, width));
     },
   };
 }
