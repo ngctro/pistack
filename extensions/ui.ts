@@ -2,7 +2,7 @@ import { keyHint, type ExtensionContext, type MessageRenderer, type Theme, type 
 import { matchesKey, stripTerminalSequences, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import { readFileSync } from "node:fs";
 import type { WorkerRecord } from "./workers.ts";
-import { argsInline, BUDGETS, framedBlock, glyphSet, identityTheme, moreRow, statusLine, treeList, type CardState, type GlyphSet, type Skin } from "./visual.ts";
+import { argsInline, BUDGETS, framedBlock, glyphSet, identityTheme, moreRow, statusLine, treeList, type CardState, type Skin } from "./visual.ts";
 import type { Todo } from "./types.ts";
 
 export type { Todo } from "./types.ts";
@@ -40,12 +40,6 @@ function preview(text: string): string[] {
 
 const skinFor = (theme?: Theme): Skin => ({ theme: theme ?? identityTheme, glyphs: glyphSet(uiPreferences.icons) });
 
-const status = (value: keyof GlyphSet["status"], theme?: Theme) => {
-  const entry = glyphSet(uiPreferences.icons).status[value];
-  const text = `${entry.glyph} ${entry.label}`;
-  return theme ? theme.fg(entry.color, text) : text;
-};
-
 const todoRow = (todo: Todo, skin: Skin): string => {
   const { theme, glyphs } = skin;
   const content = single(todo.content);
@@ -59,6 +53,16 @@ const workerRow = (worker: WorkerRecord, skin: Skin, width: number): string => {
   const readonly = worker.readonly ? theme.fg("muted", " [ro]") : "";
   const model = width >= BUDGETS.modelAtWidth ? theme.fg("dim", ` · ${single(worker.model)}`) : "";
   return `${theme.fg(glyphs.status[worker.status].color, glyphs.dot[worker.status])} ${theme.bold(single(worker.id.slice(0, 8)))} ${single(worker.agent)}${readonly}${model}`;
+};
+
+const cardState: Record<Todo["status"] | WorkerRecord["status"], CardState> = { pending: "pending", in_progress: "running", completed: "success", running: "running", done: "success", failed: "error", cancelled: "warning" };
+
+const detailCard = (header: string, state: CardState, sections: { label?: string; lines: readonly string[] }[], footer: string, width: number, skin: Skin): string[] =>
+  framedBlock({ header, state, sections, footerMeta: footer, width }, skin).map(l => clip(l, width));
+
+const windowed = <T>(rows: readonly T[], index: number, count: number): { start: number; rows: T[] } => {
+  const start = Math.max(0, Math.min(index - 4, rows.length - count));
+  return { start, rows: rows.slice(start, start + count) };
 };
 
 const pickCapped = <T>(items: readonly T[], budget: number, itemType: string, skin: Skin): { list: T[]; summary: string } => {
@@ -240,19 +244,19 @@ export class TodoBrowser {
     const index = Math.max(0, rows.findIndex(t => t.id === this.selected));
     const todo = rows[index];
     if (!todo) return [clip("No todos", width)];
+    const skin = skinFor(theme);
     if (!this.detail) {
-      const start = Math.max(0, Math.min(index - 4, rows.length - 10));
-      const lines = [`Todos ${rows.filter(t => t.status === "completed").length}/${rows.length} completed`];
-      rows.slice(start, start + 10).forEach((t, i) => {
-        lines.push(`${start + i === index ? "> " : "  "}${status(t.status, theme)} ${single(t.content)}`);
-      });
-      lines.push("Up/Down/j/k select, Enter details, Esc/q close");
-      return lines.map(l => clip(l, width));
+      const view = windowed(rows, index, 10);
+      const header = statusLine({ title: "Todos", titleColor: "accent", meta: [`${rows.filter(t => t.status === "completed").length}/${rows.length} completed`] }, skin);
+      const body = view.rows.map((t, i) => `${skin.theme.fg(view.start + i === index ? "accent" : "dim", view.start + i === index ? skin.glyphs.select : " ")} ${todoRow(t, skin)}`);
+      const footer = skin.theme.fg("dim", "Up/Down/j/k select, Enter details, Esc/q close");
+      return [header, ...body, footer].map(l => clip(l, width));
     }
-    const body = wrapTextWithAnsi(safeText(todo.content), Math.max(1, width)).map(l => clip(l, width));
+    const header = statusLine({ icon: todo.status, title: single(todo.content) }, skin);
+    const body = wrapTextWithAnsi(safeText(todo.content), Math.max(1, width - 4));
     const at = Math.min(this.scroll, Math.max(0, body.length - 12));
     const page = body.slice(at, at + 12);
-    return [`${status(todo.status, theme)} ${single(todo.id)}`, ...page, `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length}, Up/Down/j/k scroll, Esc/q back`].map(l => clip(l, width));
+    return detailCard(header, cardState[todo.status], [{ lines: page.map(l => clip(l, width - 4)) }], `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length} · Up/Down scroll · Esc back`, width, skin);
   }
 }
 export const defaultReadReport = (record: WorkerRecord): string => {
@@ -304,23 +308,23 @@ export class WorkerBrowser {
     const index = Math.max(0, rows.findIndex(w => w.id === this.selected));
     const worker = rows[index];
     if (!worker) return [clip("No workers", width)];
+    const skin = skinFor(theme);
     if (!this.detail) {
-      const start = Math.max(0, Math.min(index - 4, rows.length - 10));
-      const lines = [`Workers ${counts(rows)} (snapshot ${this.snapshot})`];
-      rows.slice(start, start + 10).forEach((w, i) => {
-        lines.push(`${start + i === index ? "> " : "  "}${status(w.status, theme)} ${single(w.id.slice(0, 8))} ${single(w.agent)}${width >= 60 ? ` ${single(w.model)}` : ""}`);
-      });
-      lines.push("Up/Down/j/k select, Enter details, r refresh, Esc/q close");
-      return lines.map(l => clip(l, width));
+      const view = windowed(rows, index, 10);
+      const header = statusLine({ title: "Workers", titleColor: "accent", meta: [counts(rows), `snapshot ${this.snapshot}`] }, skin);
+      const body = view.rows.map((w, i) => `${skin.theme.fg(view.start + i === index ? "accent" : "dim", view.start + i === index ? skin.glyphs.select : " ")} ${workerRow(w, skin, width)}`);
+      const footer = skin.theme.fg("dim", "Up/Down/j/k select, Enter details, r refresh, Esc/q close");
+      return [header, ...body, footer].map(l => clip(l, width));
     }
-    const meta = [`Worker ${single(worker.id)}`, `${status(worker.status, theme)} ${worker.readonly ? "read-only" : "writable"} ${single(worker.agent)}`, `model ${single(worker.model)}`, `cwd ${single(worker.cwd)}`, `report ${single(worker.report)}`, `session ${single(worker.session)}`];
-    if (worker.error) meta.push(`Error: ${single(worker.error)}`);
+    const header = statusLine({ icon: worker.status, title: `worker ${single(worker.id.slice(0, 8))}`, badge: worker.readonly ? { label: "ro", color: "muted" } : undefined, meta: [single(worker.model)] }, skin);
+    const meta = [`${skin.theme.fg("dim", "agent")} ${single(worker.agent)}`, `${skin.theme.fg("dim", "cwd")} ${single(worker.cwd)}`, `${skin.theme.fg("dim", "report")} ${single(worker.report)}`, `${skin.theme.fg("dim", "session")} ${single(worker.session)}`];
+    if (worker.error) meta.push(skin.theme.fg("error", `Error: ${single(worker.error)}`));
     let report: string;
     try { report = this.readReport(worker); } catch { report = `Report unreadable\n${worker.report}`; }
-    const body = wrapTextWithAnsi(report, Math.max(1, width)).map(l => clip(l, width));
+    const body = wrapTextWithAnsi(report, Math.max(1, width - 4));
     const at = Math.min(this.scroll, Math.max(0, body.length - 8));
     const page = body.slice(at, at + 8);
-    return [...meta, "Report", ...page, `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length}, Up/Down/j/k scroll, Esc/q back`].map(l => clip(l, width));
+    return detailCard(header, cardState[worker.status], [{ lines: meta.map(l => clip(l, width - 4)) }, { label: "Report", lines: page.map(l => clip(l, width - 4)) }], `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length} · Up/Down scroll · Esc back`, width, skin);
   }
 }
 export async function showTodos(ctx: ExtensionContext, read: () => readonly Todo[]): Promise<void> {
