@@ -205,8 +205,8 @@ export function argsInline(args: Record<string, unknown>, maxWidth: number): str
 }
 
 function scalar(value: unknown, maxLen: number): string {
-  if (typeof value === "string") return `"${truncateToWidth(safeText(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n"), maxLen, "…")}"`;
-  const cap = (text: string) => truncateToWidth(text, maxLen, "…");
+  const cap = (text: string) => stripTerminalSequences(truncateToWidth(text, maxLen, "…"));
+  if (typeof value === "string") return `"${cap(safeText(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n"))}"`;
   if (value === null || value === undefined) return cap("null");
   if (typeof value === "boolean" || typeof value === "number") return cap(String(value));
   if (Array.isArray(value)) return cap(`[${value.length} items]`);
