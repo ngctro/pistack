@@ -4,9 +4,9 @@ This file defines the runtime for the port. Read it before running any bundled w
 
 ## Skills and agents
 
-The package exposes every ordinary skill as both `/name` and `/skill:name`. Resolve relative files from the skill's directory, not the working directory. Paths beginning `skills/` in imported prose refer to this package root. Never assume this package is checked into the project being edited. To refresh a workflow from upstream, fetch this repository separately rather than running `git show` against the user's repository.
+The package exposes every ordinary skill as `/skill:name`. Resolve relative files from the skill's directory, not the working directory. Paths beginning `skills/` in imported prose refer to this package root. Never assume this package is checked into the project being edited. To refresh a workflow from upstream, fetch this repository separately rather than running `git show` against the user's repository.
 
-Short aliases preserve upstream commands but can collide with commands from other extensions. Use `/skill:name` to invoke the bundled skill explicitly when a short alias is ambiguous; it loads the skill rather than running a special command handler.
+Invoke the bundled skill as `/skill:name`.
 
 `/poteto-mode` activates persistent session instructions. `/poteto-mode off` disables them. `/skill:poteto-mode` loads the skill for one invocation. `poteto-agent` reads the same skill. `comment-sicko` is the Comment Sicko agent. Neither agent is an external service.
 
@@ -80,4 +80,4 @@ The port includes only referenced team-kit skills: `deslop`, `control-cli`, `con
 
 The complete PR watcher, orchestration store, plan validator, and decision logger are bundled unchanged except documented platform adaptations. The upstream watcher and store need Bun, their pinned local dependencies, and gh; orchestration's automatic frontier discovery additionally uses gt, while an explicit PR list follows the upstream CLI contract. Run their tests with `npm run test:upstream`.
 
-Benny stays dormant in `automations/benny`. The native `/automate` skill replaces the proprietary automation editor flow. `pstack_routines` creates disabled routine configs, and the local Node runner supplies authenticated webhooks, Slack Events API verification/deduplication, scheduled triggers, and durable run artifacts. Read [automation hosting](automations.md) before enabling any routine. No Slack credentials or hosted Cursor services are included.
+Benny stays dormant in `automations/benny`. The native `/skill:automate` skill replaces the proprietary automation editor flow. `pstack_routines` creates disabled routine configs, and the local Node runner supplies authenticated webhooks, Slack Events API verification/deduplication, scheduled triggers, and durable run artifacts. Read [automation hosting](automations.md) before enabling any routine. No Slack credentials or hosted Cursor services are included.

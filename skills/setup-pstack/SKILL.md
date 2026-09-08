@@ -13,4 +13,4 @@ Configuration lives in `~/.pi/agent/pstack.json` under `models`. Preserve unrela
 
 The native command validates real IDs against authenticated models and saves atomically. Changes apply immediately. Re-run it to update one role. All roles and the schema are documented in `../../docs/pi-runtime.md`.
 
-After configuration, check for a project-local verification skill or harness. If absent, offer `/create-verification-skill` once. Do not create one without the user's agreement.
+After configuration, check for a project-local verification skill or harness. If absent, offer `/skill:create-verification-skill` once. Do not create one without the user's agreement.

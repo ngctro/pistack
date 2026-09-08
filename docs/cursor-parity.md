@@ -8,7 +8,7 @@ The comparison uses Cursor's public documentation and `cursor/plugins` revision 
 
 | Cursor capability | In this port | Remaining difference |
 | --- | --- | --- |
-| Skills and explicit slash invocation | Bundled skills use pi's Agent Skills loader and short aliases. | Cursor `paths`, custom-mode badge metadata, and nested directory scoping are not implemented. |
+| Skills and explicit slash invocation | Bundled skills use pi's Agent Skills loader as `/skill:name`. No duplicate short aliases are registered. | Cursor `paths`, custom-mode badge metadata, and nested directory scoping are not implemented. |
 | Custom subagents | File-defined agents, metadata discovery, isolated RPC workers, and saved-session resume. | No automatic `/agent-name` aliases, `fast` model selection, or Cursor's state-changing-shell classifier. |
 | Rules and `AGENTS.md` | Pi loads its native context files. | No `.mdc` glob matching, team rule distribution, or Cursor `@rule` attachment engine. |
 | Commands | Pi prompt templates provide named prompts and argument substitution. | `.cursor/commands` is not automatically imported. |

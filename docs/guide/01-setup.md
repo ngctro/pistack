@@ -5,7 +5,7 @@
 Requires pi 0.85+, Node 22.18+, and Git. In a terminal:
 
 ```sh
-pi install git:github.com/ngctro/pistack@v0.1.1
+pi install git:github.com/ngctro/pistack
 ```
 
 Start pi (or `/reload` an existing session), then run `/setup-pstack`. Use `pi install -l ...` for project-local installation; approve the project only after reviewing its code. Optional workflow tools are listed in the [README](../../README.md).
@@ -24,7 +24,7 @@ Configuration lives in `~/.pi/agent/pstack.json`. Changes apply immediately. Uns
 
 ## Add live verification
 
-Setup points you to `/create-verification-skill`. Run it to discover an existing app harness or build and verify `.pi/skills/verify-<app>/`. This is a separate action, not an automatic filesystem edit during model setup. [Verify and ship](./06-verify-and-ship.md) explains the workflow.
+Setup points you to `/skill:create-verification-skill`. Run it to discover an existing app harness or build and verify `.pi/skills/verify-<app>/`. This is a separate action, not an automatic filesystem edit during model setup. [Verify and ship](./06-verify-and-ship.md) explains the workflow.
 
 ## First task
 

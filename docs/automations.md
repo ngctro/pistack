@@ -1,6 +1,6 @@
 # Host pi automations
 
-Use `/automate` to review a routine before enabling it. This package does not create hosted Cursor automations or provision a Slack app for you.
+Use `/skill:automate` to review a routine before enabling it. This package does not create hosted Cursor automations or provision a Slack app for you.
 
 ## Local runner
 

@@ -52,7 +52,10 @@ test("all upstream skills and referenced team-kit closure load with valid metada
   assert.equal(result.skills.length, 51);
   for (const name of ["poteto-mode", "make-bot-ui", "deslop", "control-cli", "control-ui", "verify-this", "create-skill", "automate"]) assert.ok(result.skills.some(s => s.name === name), name);
   const h = harness();
-  for (const skill of result.skills) assert.ok(h.commands.has(skill.name), skill.name);
+  for (const skill of result.skills) {
+    if (["poteto-mode", "setup-pstack"].includes(skill.name)) assert.ok(h.commands.has(skill.name), skill.name);
+    else assert.ok(!h.commands.has(skill.name), skill.name);
+  }
   assert.ok(!h.commands.has("setup-benny"), "Benny remains dormant");
 });
 
