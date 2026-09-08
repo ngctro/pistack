@@ -472,8 +472,11 @@ export const messagePresentation: MessageRenderer = (message, options, theme) =>
     invalidate() {},
     render: width => {
       if (options.expanded) return wrapTextWithAnsi(safeText(text + extra), Math.max(1, width)).map(l => clip(l, width));
-      const rows = preview(text).slice(0, 4);
-      return rows.map((row, i) => `${t.fg("dim", i === rows.length - 1 ? skin.glyphs.tree.last : skin.glyphs.tree.branch)} ${t.fg("muted", skin.glyphs.bullet)} ${row}`).map(l => clip(l, width));
+      const lines = preview(text);
+      const shown = lines.slice(0, 4);
+      const rows = shown.map((row, i) => `${t.fg("dim", i === shown.length - 1 ? skin.glyphs.tree.last : skin.glyphs.tree.branch)} ${t.fg("muted", skin.glyphs.bullet)} ${row}`);
+      if (lines.length > shown.length || extra !== "") rows.push(expandHint(skin));
+      return rows.map(l => clip(l, width));
     },
   };
   return { invalidate: () => component.invalidate(), render: width => [clip(label, width), ...component.render(width)] };

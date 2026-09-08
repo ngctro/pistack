@@ -381,3 +381,9 @@ test("running workers tint the card running and quote-heavy args stay readable",
   const expandedTop = slots.renderResult!(output(JSON.stringify(running)), { expanded: true, isPartial: false }, mark, context({ action: "list" })).render(80)[0];
   assert.ok(expandedTop.includes("◐"));
 });
+
+test("collapsed messages hint at expansion only when content is hidden", () => {
+  const notice = (content: string) => messagePresentation({ customType: "pstack-worker", content, details: {}, display: true, timestamp: 0, role: "custom" as const }, { expanded: false, outputPad: 0 }, theme)!.render(80);
+  assert.equal(notice("one\ntwo").length, 3);
+  assert.equal(notice("n\n".repeat(10)).length, 6);
+});
