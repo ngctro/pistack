@@ -31,39 +31,29 @@ const STATUS_LABELS: Record<StatusKey, { label: string; color: GlyphSet["status"
   partial: { label: "Partial", color: "warning" },
 };
 
+const NERD_STATUS: Record<StatusKey, string> = { pending: "○", in_progress: "◐", completed: "●", running: "◐", done: "●", failed: "✘", cancelled: "⊘", info: "ℹ", partial: "◐" };
+const ASCII_STATUS: Record<StatusKey, string> = { pending: "o", in_progress: ">", completed: "+", running: ">", done: "+", failed: "!", cancelled: "-", info: "i", partial: "~" };
+const NERD_DOTS: Record<WorkerRecord["status"], string> = { running: "◐", done: "●", failed: "✘", cancelled: "⊘" };
+const ASCII_DOTS: Record<WorkerRecord["status"], string> = { running: ">", done: "+", failed: "!", cancelled: "-" };
+
 export function glyphSet(icons: UiIcons): GlyphSet {
-  const labels = STATUS_LABELS;
-  const withGlyphs = (glyphs: Record<StatusKey, string>, dots: Record<WorkerRecord["status"], string>, box: GlyphSet["box"], tree: GlyphSet["tree"], checkbox: GlyphSet["checkbox"], select: string, bullet: string): GlyphSet => ({
+  const ascii = icons === "ascii";
+  const glyphs = ascii ? ASCII_STATUS : NERD_STATUS;
+  return {
     icons,
-    status: Object.fromEntries((Object.keys(labels) as StatusKey[]).map(k => [k, { glyph: glyphs[k], ...labels[k] }])) as GlyphSet["status"],
-    checkbox,
-    tree,
-    box,
-    dot: dots,
-    select,
-    bullet,
+    status: Object.fromEntries((Object.keys(STATUS_LABELS) as StatusKey[]).map(k => [k, { glyph: glyphs[k], ...STATUS_LABELS[k] }])) as GlyphSet["status"],
+    checkbox: ascii ? { checked: "[x]", unchecked: "[ ]" } : { checked: "☑", unchecked: "☐" },
+    tree: ascii
+      ? { branch: "|-", last: "`-", vertical: "|", horizontal: "-", hook: "`" }
+      : { branch: "├─", last: "└─", vertical: "│", horizontal: "─", hook: "╰" },
+    box: ascii
+      ? { topLeft: "+", topRight: "+", bottomLeft: "+", bottomRight: "+", horizontal: "-", vertical: "|", teeRight: "+", teeLeft: "+" }
+      : { topLeft: "╭", topRight: "╮", bottomLeft: "╰", bottomRight: "╯", horizontal: "─", vertical: "│", teeRight: "├", teeLeft: "┤" },
+    dot: ascii ? ASCII_DOTS : NERD_DOTS,
+    select: ascii ? ">" : "❯",
+    bullet: ascii ? "-" : "•",
     ellipsis: "…",
-  });
-  if (icons === "ascii") {
-    return withGlyphs(
-      { pending: "o", in_progress: ">", completed: "+", running: ">", done: "+", failed: "!", cancelled: "-", info: "i", partial: "~" },
-      { running: ">", done: "+", failed: "!", cancelled: "-" },
-      { topLeft: "+", topRight: "+", bottomLeft: "+", bottomRight: "+", horizontal: "-", vertical: "|", teeRight: "+", teeLeft: "+" },
-      { branch: "|-", last: "`-", vertical: "|", horizontal: "-", hook: "`" },
-      { checked: "[x]", unchecked: "[ ]" },
-      ">",
-      "-",
-    );
-  }
-  return withGlyphs(
-    { pending: "○", in_progress: "◐", completed: "●", running: "◐", done: "●", failed: "✘", cancelled: "⊘", info: "ℹ", partial: "◐" },
-    { running: "◐", done: "●", failed: "✘", cancelled: "⊘" },
-    { topLeft: "╭", topRight: "╮", bottomLeft: "╰", bottomRight: "╯", horizontal: "─", vertical: "│", teeRight: "├", teeLeft: "┤" },
-    { branch: "├─", last: "└─", vertical: "│", horizontal: "─", hook: "╰" },
-    { checked: "☑", unchecked: "☐" },
-    "❯",
-    "•",
-  );
+  };
 }
 
 export type ThemeColor = Parameters<Theme["fg"]>[0];
@@ -80,6 +70,8 @@ export const identityTheme: Theme = {
 } as unknown as Theme;
 
 const flat = (text: string) => text.replace(/\r\n?|\n/g, " ");
+
+const glyphEllipsis = "…";
 
 export function statusLine(options: {
   icon?: StatusKey; iconOverride?: string; title: string; titleColor?: ThemeColor;
@@ -128,7 +120,7 @@ export function treeList<T>(options: {
 
 export function moreRow(remaining: number, itemType: string, skin: Skin): string {
   const plural = remaining === 1 ? itemType : `${itemType}s`;
-  return `… ${remaining} more ${plural}`;
+  return `${glyphEllipsis} ${remaining} more ${plural}`;
 }
 
 export function stateBorder(state: CardState | undefined, theme: Theme): (text: string) => string {
@@ -164,13 +156,13 @@ export function framedBlock(options: {
   sections.forEach((section, i) => {
     if (section.label) lines.push(bar(glyphs.box.teeRight, glyphs.box.teeLeft, section.label));
     else if (section.separator && i > 0) lines.push(bar(glyphs.box.teeRight, glyphs.box.teeLeft));
-    for (const line of section.lines) for (const piece of flatSplit(line, inner)) lines.push(content(piece));
+    for (const line of section.lines) for (const piece of flatSplit(line)) lines.push(content(piece));
   });
   lines.push(bar(glyphs.box.bottomLeft, glyphs.box.bottomRight, options.footerMeta));
   return lines.map(l => pad(l, width));
 }
 
-function flatSplit(line: string, inner: number): string[] {
+function flatSplit(line: string): string[] {
   return line.replace(/\t/g, "  ").split(/\r?\n/);
 }
 
@@ -201,8 +193,6 @@ export function argsInline(args: Record<string, unknown>, maxWidth: number): str
   return pieces.join(", ");
 }
 
-const glyphEllipsis = "…";
-
 function scalar(value: unknown, maxLen: number): string {
   if (value === null || value === undefined) return "null";
   if (typeof value === "boolean" || typeof value === "number") return String(value);
@@ -215,9 +205,7 @@ function scalar(value: unknown, maxLen: number): string {
 export const BUDGETS = {
   callRows: 1,
   collapsedResultRows: 6,
-  collapsedItems: 3,
   expandedBody: 12,
-  itemsCollapsed: 8,
   widgetRows: 5,
   widgetTaskRows: 3,
   tailCells: 6,

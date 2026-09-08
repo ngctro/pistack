@@ -31,7 +31,7 @@ type Worker = { record: WorkerRecord; process: ChildProcessWithoutNullStreams; d
 
 function activityPreview(toolName: string, args: unknown): string {
   let first = "";
-  if (!!args && typeof args === "object" && !Array.isArray(args)) {
+  if (args && typeof args === "object" && !Array.isArray(args)) {
     const fields = args as Record<string, unknown>;
     for (const key of ["action", "query", "subagent_type", "prompt", "path", "command"]) {
       const value = fields[key];
