@@ -10,25 +10,19 @@ Mine the current conversation for durable learnings, then route them into skill 
 
 ## When to invoke
 
-- The user said "reflect" or "/skill:reflect".
-- A complex task (5+ tool calls) just landed cleanly and the recipe is worth keeping.
-- The agent hit dead ends, found the working path, and the path generalizes.
-- The user corrected the agent's approach mid-task.
-- A non-trivial workflow emerged that isn't captured anywhere.
-
-Skip when the conversation is trivial, off-topic, or already covered by an existing skill the parent followed correctly. One-offs are not learnings.
+Invoke when the user says "reflect" or "/skill:reflect". Skip when the conversation is trivial, off-topic, or already covered by an existing skill the parent followed correctly. One-offs are not learnings.
 
 ## Process
 
 ### 1. Locate the active transcript
 
-The parent finds its own transcript file before fanning out. The system prompt names the active workspace's the workspace sessions directory returned by `pstack_history` directory; use that path. Do not glob across unrelated workspace session directories. That crosses workspace boundaries and reads private chats from unrelated projects.
+The parent finds its own transcript file before fanning out. The system prompt names the active workspace's the workspace sessions directory returned by `pstack_history` directory. Use that path. Do not glob across unrelated workspace session directories. That crosses workspace boundaries and reads private chats from unrelated projects.
 
 Call `pstack_history` and use its `current` transcript path. Worker session paths come from `pstack_workers` results. The first JSONL line is a session header, not a user message; match opening prompts only in `type: message` entries. If this is an ephemeral session with no file, write a tight digest and pass that instead.
 
 ### 2. Spawn three reviewers in parallel
 
-One message, three `pstack_task` calls, `subagent_type: generalPurpose`, explicit `model:` on each, agent mode (`readonly: false`). Reviewers need MCP access for context lookups (tickets, chat threads, observability traces referenced in the transcript); read-only mode restricts MCP calls to annotated read-only tools. The prompt forbids file writes; the parent applies edits.
+One message, three `pstack_task` calls, `subagent_type: generalPurpose`, explicit `model:` on each, agent mode (`readonly: false`). Reviewers need MCP access for context lookups (tickets, chat threads, observability traces referenced in the transcript). Read-only mode restricts MCP calls to annotated read-only tools. The prompt forbids file writes. The parent applies edits.
 
 | Lens | `model` | Prompt template |
 |---|---|---|
@@ -36,21 +30,21 @@ One message, three `pstack_task` calls, `subagent_type: generalPurpose`, explici
 | Tooling | your configured reflect-tooling model (default `inherit-parent`) | `references/tooling-reviewer.md` |
 | Divergent | your configured reflect-judgment model (default `inherit-parent`) | `references/divergent-reviewer.md` |
 
-Pass each template verbatim, substituting the transcript path or digest where marked. Reviewers return findings in the report files returned by `pstack_task`; use `pstack_workers` to wait for completion.
+Pass each template verbatim, substituting the transcript path or digest where marked. Reviewers return findings in the report files returned by `pstack_task`. Use `pstack_workers` to wait for completion.
 
 ### 3. Synthesize
 
-One `pstack_task` call, `subagent_type: generalPurpose`, using your configured reflect-judgment model (default `inherit-parent`), agent mode (`readonly: false`). The synthesizer's quality check includes spot-verifying citations, which can require MCP access; read-only mode restricts MCP calls to annotated read-only tools. Use `references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. The synthesizer returns a structured Accepted / Rejected / Backlog list.
+One `pstack_task` call, `subagent_type: generalPurpose`, using your configured reflect-judgment model (default `inherit-parent`), agent mode (`readonly: false`). The synthesizer's quality check includes spot-verifying citations, which can require MCP access. Read-only mode restricts MCP calls to annotated read-only tools. Use `references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. The synthesizer returns a structured Accepted / Rejected / Backlog list.
 
 ### 4. Structural enforcement check
 
-Sanity-check the synthesizer's Accepted list. For any item that would be enforced more reliably by a lint rule, script, metadata flag, or runtime check, move it from Accepted to Backlog. The synthesizer already applies this criterion; this is a final pass before edits land. See the **encode-lessons-in-structure** principle skill.
+Sanity-check the synthesizer's Accepted list. For any item that would be enforced more reliably by a lint rule, script, metadata flag, or runtime check, move it from Accepted to Backlog. See the **encode-lessons-in-structure** principle skill.
 
 ### 5. Apply
 
-Before applying any Accepted edit, present the synthesizer's full Accepted/Rejected/Backlog output to the user and wait for explicit approval. The user picks which subset to apply and may redirect routings. Skill changes affect every future agent in the org; do not auto-apply.
+Before applying any Accepted edit, present the synthesizer's full Accepted/Rejected/Backlog output to the user and wait for explicit approval. The user picks which subset to apply and may redirect routings. Skill changes affect every future agent in the org. Do not auto-apply.
 
-Backlog items file to whatever devex / backlog tracker your team uses automatically. Those are tracker submissions, not skill edits. Only the Accepted list waits for approval.
+Backlog items file to whatever devex / backlog tracker your team uses automatically. Only the Accepted list waits for approval.
 
 For each approved Accepted item, follow the Routing field exactly:
 
