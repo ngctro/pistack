@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { initTheme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { glyphSet, identityTheme } from "../extensions/visual.ts";
-import { TodoBrowser, WorkerBrowser, indicatorOptions, messagePresentation, safeText, syncPreferences, toolPresentation, todoWidget, uiPreferences, type Todo, type UiPreferences } from "../extensions/ui.ts";
+import { TodoBrowser, WorkerBrowser, indicatorOptions, messagePresentation, safeText, setWorkerActivity, syncPreferences, toolPresentation, todoWidget, uiPreferences, workerActivity, type Todo, type UiPreferences } from "../extensions/ui.ts";
 import { Config } from "../extensions/config.ts";
 import { Value } from "typebox/value";
 import type { WorkerRecord } from "../extensions/workers.ts";
@@ -215,4 +215,38 @@ test("browsers take q/j/k, guard empty lists and clamp detail scroll", () => {
   const emptyWorkers = new WorkerBrowser(() => []);
   assert.equal(emptyWorkers.handleInput("\r"), "stay");
   assert.equal(emptyWorkers.handleInput("q"), "close");
+});
+
+test("worker activity renders under running rows within budgets and clears", () => {
+  const records = [
+    { ...worker, id: "aaaaaaaa-1111-2222-3333-444444444444", status: "running" },
+    { ...worker, id: "bbbbbbbb-1111-2222-3333-444444444444", status: "running" },
+    { ...worker, id: "cccccccc-1111-2222-3333-444444444444", status: "failed", error: "boom" },
+  ] as WorkerRecord[];
+  setWorkerActivity(records[0].id, "alpha\nbeta");
+  setWorkerActivity(records[1].id, "gamma");
+  try {
+    for (const width of [20, 40, 80]) {
+      const card = toolPresentation("pstack_workers").renderResult!(output(JSON.stringify(records)), { expanded: false, isPartial: false }, theme, context({ action: "list" })).render(width);
+      bounded(card, width, 6);
+      const flat = card.join("\n");
+      assert.ok(flat.includes("alpha"));
+      assert.ok(flat.includes("beta"));
+      const browser = new WorkerBrowser(() => records, () => "report");
+      bounded(browser.render(width, theme), width, 12);
+      const list = browser.render(width, theme).join("\n");
+      assert.ok(list.includes("alpha"));
+      assert.ok(list.includes("gamma"));
+    }
+    setWorkerActivity(records[0].id, undefined);
+    setWorkerActivity(records[1].id, undefined);
+    setWorkerActivity(records[2].id, "stale");
+    const cleared = toolPresentation("pstack_workers").renderResult!(output(JSON.stringify(records)), { expanded: false, isPartial: false }, theme, context({ action: "list" })).render(80).join("\n");
+    assert.ok(!cleared.includes("alpha"));
+    assert.ok(!cleared.includes("gamma"));
+    assert.ok(!cleared.includes("stale"));
+    assert.ok(!workerActivity.has(records[2].id));
+  } finally {
+    for (const r of records) setWorkerActivity(r.id, undefined);
+  }
 });

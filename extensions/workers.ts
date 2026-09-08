@@ -5,11 +5,12 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { modelChoices, readConfig, resolveModel } from "./config.ts";
 import { output } from "./output.ts";
 import { discoverAgents } from "./agents.ts";
-import { toolPresentation, messagePresentation, showWorkers } from "./ui.ts";
+import { toolPresentation, messagePresentation, showWorkers, setWorkerActivity } from "./ui.ts";
 
 export const root = fileURLToPath(new URL("../", import.meta.url));
 export const Task = Type.Object({
@@ -27,6 +28,19 @@ export type WorkerRecord = {
   status: "running" | "done" | "failed" | "cancelled"; error?: string; readonly: boolean; agent: string;
 };
 type Worker = { record: WorkerRecord; process: ChildProcessWithoutNullStreams; done: Promise<void>; stop: () => void; background: boolean };
+
+function activityPreview(toolName: string, args: unknown): string {
+  let first = "";
+  if (!!args && typeof args === "object" && !Array.isArray(args)) {
+    const fields = args as Record<string, unknown>;
+    for (const key of ["action", "query", "subagent_type", "prompt", "path", "command"]) {
+      const value = fields[key];
+      if (typeof value === "string" && value.trim()) { first = value; break; }
+    }
+  }
+  const flat = (text: string) => text.replace(/\r\n?|\n/g, " ").replace(/\s+/g, " ").trim();
+  return truncateToWidth(flat(first ? `${toolName} ${flat(first)}` : toolName), 60, "…");
+}
 
 export function attachJsonLines(stream: NodeJS.ReadableStream, receive: (value: unknown) => void) {
   let buffer = "";
@@ -136,12 +150,16 @@ export function registerWorkers(pi: ExtensionAPI) {
       if (event.type === "extension_ui_request" && ["input", "select", "confirm", "editor"].includes(event.method ?? "")) {
         child.stdin.write(JSON.stringify({ type: "extension_ui_response", id: event.id, cancelled: true }) + "\n");
       }
-      if ((event.type === "response" && event.success === false) || event.type === "protocol_error") { record.error = event.error ?? "Invalid worker protocol"; stop(); }
-      if (event.type === "agent_settled") { settled = true; stop(); }
+      if (event.type === "tool_execution_start") {
+        const start = raw as { toolName?: unknown; args?: unknown };
+        setWorkerActivity(id, activityPreview(typeof start.toolName === "string" && start.toolName ? start.toolName : "tool", start.args));
+      }
+      if ((event.type === "response" && event.success === false) || event.type === "protocol_error") { record.error = event.error ?? "Invalid worker protocol"; setWorkerActivity(id, undefined); stop(); }
+      if (event.type === "agent_settled") { settled = true; setWorkerActivity(id, undefined); stop(); }
     });
     child.on("error", error => { record.error = error.message; });
     child.on("close", () => {
-      exited = true; clearTimeout(killTimer);
+      exited = true; clearTimeout(killTimer); setWorkerActivity(id, undefined);
       if (record.status !== "cancelled") record.status = settled && !record.error ? "done" : "failed";
       if (record.status === "failed" && !record.error) record.error = stderr || "Worker exited before completion";
       writeFileSync(record.report, text || record.error || record.status, { mode: 0o600 }); save(ctx, record); complete();
