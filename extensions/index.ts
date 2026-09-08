@@ -1,8 +1,8 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { getAgentDir, parseFrontmatter, SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { configPath, modelChoices, panels, readConfig, resolveModel, roles, writeConfig } from "./config.ts";
 import { output } from "./output.ts";
 import { registerWorkers, root } from "./workers.ts";
@@ -27,7 +27,7 @@ export default function pistack(pi: ExtensionAPI) {
   const persist = () => pi.appendEntry("pstack-state", { mode, goal, todos });
   const render = (ctx: ExtensionContext) => {
     if (!ctx.hasUI) return;
-    ctx.ui.setStatus("pstack", [mode && "poteto", goal && "goal", loop && `loop ${loop.seconds}s`].filter(Boolean).join(" · ") || undefined);
+    ctx.ui.setStatus("pstack", [mode && "🥔", goal && "goal", loop && `loop ${loop.seconds}s`].filter(Boolean).join(" · ") || undefined);
     if (!todos.length) ctx.ui.setWidget("pstack-todos", undefined);
     else if (ctx.mode === "tui") ctx.ui.setWidget("pstack-todos", (_tui, theme) => todoWidget(() => todos, theme));
     else ctx.ui.setWidget("pstack-todos", todoWidget(() => todos).render(80));
@@ -55,11 +55,6 @@ export default function pistack(pi: ExtensionAPI) {
     const active = mode ? `\nPoteto mode active. For substantive tasks read ${skillPath("poteto-mode")} and the matched playbook. Casual turns need no workflow.\n` : "";
     return { systemPrompt: `${event.systemPrompt}\n\nPistack runtime guide: ${join(root, "docs/pi-runtime.md")}. Bundled skill root: ${join(root, "skills")}. Read that guide before using a Cursor-style workflow.\nCurrent transcript: ${ctx.sessionManager.getSessionFile() ?? "ephemeral"}. Workspace sessions: ${ctx.sessionManager.getSessionDir()}. Agent store: ${join(getAgentDir(), "pstack", "runs", ctx.sessionManager.getSessionId())}.\nModel roles (authoritative over historical examples): ${JSON.stringify(Object.fromEntries(roles.map(r => [r, modelChoices(config, r)])))}. Repeated inherit-parent panel entries mean independent workers, not distinct models. Be honest about missing model diversity.\n${active}${goal ? `Standing goal: ${goal}. Keep working toward its checkable predicate. Use pstack_goal complete only with concrete evidence. Never relax the predicate.\n` : ""}${todos.length ? `Current todos: ${JSON.stringify(todos)}\n` : ""}` };
   });
-  for (const name of readdirSync(join(root, "skills"), { withFileTypes: true }).filter(e => e.isDirectory() && !e.name.startsWith(".")).map(e => e.name)) {
-    const { frontmatter } = parseFrontmatter<{ description?: string }>(readFileSync(skillPath(name), "utf8"));
-    if (["setup-pstack", "poteto-mode"].includes(name)) continue;
-    pi.registerCommand(name, { description: frontmatter.description ?? name, handler: async args => { invoke(name, args); } });
-  }
   pi.registerCommand("pstack-todos", {
     description: "Browse session todos (read-only).",
     handler: async (_args, ctx) => {

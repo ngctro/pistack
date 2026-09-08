@@ -17,7 +17,8 @@ assert.ok(!/Failed to load extension|Cannot find module|Error:/.test(result.stde
 const response = result.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line)).find(e => e.id === 'smoke');
 assert.equal(response?.success, true, result.stdout);
 const commands = new Set(response.data.commands.map(c => c.name));
-for (const name of ['poteto-mode', 'setup-pstack', 'arena', 'loop', 'goal', 'verify-this', 'automate', 'skill:swarm']) assert.ok(commands.has(name), `Missing ${name}`);
+for (const name of ['poteto-mode', 'setup-pstack', 'loop', 'goal', 'skill:arena', 'skill:verify-this', 'skill:automate', 'skill:swarm']) assert.ok(commands.has(name), `Missing ${name}`);
+for (const name of ['arena', 'verify-this', 'automate']) assert.ok(!commands.has(name), `Duplicate ${name}`);
 assert.ok(!commands.has('setup-benny'));
 console.log('Actual pi RPC loader: skills and commands registered, Benny dormant.');
 
