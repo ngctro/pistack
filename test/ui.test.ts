@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { initTheme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { initTheme, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { glyphSet, identityTheme } from "../extensions/visual.ts";
-import { TodoBrowser, WorkerBrowser, indicatorOptions, messagePresentation, safeText, setWorkerActivity, syncPreferences, toolPresentation, todoWidget, uiPreferences, workerActivity, type Todo, type UiPreferences } from "../extensions/ui.ts";
+import { glyphSet, identityTheme, safeText } from "../extensions/visual.ts";
+import { TodoBrowser, WorkerBrowser, indicatorOptions, messagePresentation, setWorkerActivity, showWorkers, syncPreferences, toolPresentation, todoWidget, uiPreferences, workerActivity, type Todo, type UiPreferences } from "../extensions/ui.ts";
 import { Config } from "../extensions/config.ts";
 import { Value } from "typebox/value";
 import type { WorkerRecord } from "../extensions/workers.ts";
@@ -246,6 +246,89 @@ test("worker activity renders under running rows within budgets and clears", () 
     assert.ok(!cleared.includes("gamma"));
     assert.ok(!cleared.includes("stale"));
     assert.ok(!workerActivity.has(records[2].id));
+  } finally {
+    for (const r of records) setWorkerActivity(r.id, undefined);
+  }
+});
+
+test("worker activity repaints an open workers overlay and stops after close", async () => {
+  const id = "0verlay1-1111-2222-3333-444444444444";
+  const records = [{ ...worker, id, status: "running" } as WorkerRecord];
+  let comp!: { handleInput: (data: string) => void };
+  let renders = 0;
+  const tui = { requestRender: () => { renders += 1; } };
+  let finished = false;
+  const ctx = {
+    ui: {
+      custom: (fn: (tui: { requestRender: () => void }, theme: typeof identityTheme, kb: unknown, done: () => void) => { handleInput: (data: string) => void }) => {
+        comp = fn(tui, theme, {}, () => { finished = true; });
+        return Promise.resolve();
+      },
+    },
+  } as unknown as ExtensionContext;
+  await showWorkers(ctx, () => records);
+  setWorkerActivity(id, "overlay work");
+  assert.equal(renders, 1);
+  comp.handleInput("\x1b");
+  assert.ok(finished);
+  setWorkerActivity(id, "later work");
+  assert.equal(renders, 1);
+  setWorkerActivity(id, undefined);
+  assert.equal(renders, 1);
+});
+
+test("expanded workers card keeps whole activity blocks within budget", () => {
+  const records = Array.from({ length: 7 }, (_, i) => ({ ...worker, id: `eeeeeee${i}-1111-2222-3333-444444444444`, status: "running" } as WorkerRecord));
+  records.forEach((r, i) => setWorkerActivity(r.id, `job ${i} running`));
+  try {
+    const lines = toolPresentation("pstack_workers").renderResult!(output(JSON.stringify(records)), { expanded: true, isPartial: false }, theme, context({ action: "list" })).render(80);
+    const summary = lines.findIndex(l => /… \d+ more workers/.test(l));
+    assert.ok(summary > 0);
+    assert.ok(summary <= 12);
+    assert.ok(!lines[summary].includes("-"));
+    assert.match(lines[summary], /… 2 more workers/);
+    for (let i = 0; i < 5; i++) {
+      const at = lines.findIndex(l => l.includes(`job ${i} running`));
+      assert.ok(at > 0);
+      assert.ok(lines[at - 1].includes(records[i].id.slice(0, 8)));
+    }
+    assert.ok(!lines.join("\n").includes("job 5 running"));
+    assert.ok(!lines.join("\n").includes("job 6 running"));
+  } finally {
+    for (const r of records) setWorkerActivity(r.id, undefined);
+  }
+});
+
+test("failed worker rows force an error border on collapsed and expanded cards", () => {
+  const failed = [{ ...worker, id: "fa11ed11-1111-2222-3333-444444444444", status: "failed", error: "boom" } as WorkerRecord];
+  const clean = [{ ...worker, id: "fa11ed11-1111-2222-3333-444444444444", status: "done" } as WorkerRecord];
+  const mark = { ...identityTheme, fg: (c: string, text: string) => `<${c}>${text}</>` } as unknown as typeof theme;
+  const slots = toolPresentation("pstack_workers");
+  const failedTop = slots.renderResult!(output(JSON.stringify(failed)), { expanded: false, isPartial: false }, mark, context({ action: "list" })).render(80)[0];
+  const errorTop = slots.renderResult!(output(JSON.stringify(clean)), { expanded: false, isPartial: false }, mark, context({ action: "list" }, true)).render(80)[0];
+  const cleanTop = slots.renderResult!(output(JSON.stringify(clean)), { expanded: false, isPartial: false }, mark, context({ action: "list" })).render(80)[0];
+  assert.ok(failedTop.includes("<error>"));
+  assert.ok(errorTop.includes("<error>"));
+  assert.ok(!cleanTop.includes("<error>"));
+  const expandedFailed = slots.renderResult!(output(JSON.stringify(failed)), { expanded: true, isPartial: false }, mark, context({ action: "list" })).render(80)[0];
+  const expandedClean = slots.renderResult!(output(JSON.stringify(clean)), { expanded: true, isPartial: false }, mark, context({ action: "list" })).render(80)[0];
+  assert.ok(expandedFailed.includes("<error>"));
+  assert.ok(!expandedClean.includes("<error>"));
+});
+
+test("worker browser keeps the selected worker when trimming long lists", () => {
+  const records = Array.from({ length: 8 }, (_, i) => ({ ...worker, id: `5elect-${i}1-2222-3333-444444444444`, status: "running" } as WorkerRecord));
+  records.forEach((r, i) => setWorkerActivity(r.id, `task ${i} active`));
+  try {
+    const browser = new WorkerBrowser(() => records, () => "report");
+    for (let i = 0; i < 7; i++) browser.handleInput("j");
+    const lines = browser.render(80, theme);
+    assert.ok(lines.length <= 12);
+    const flat = lines.join("\n");
+    assert.ok(flat.includes(records[7].id.slice(0, 8)));
+    assert.ok(flat.includes("task 7 active"));
+    for (let width = 1; width <= 120; width++) bounded(browser.render(width, theme), width, 12);
+    assert.ok(browser.render(80, theme).join("\n").includes("task 7 active"));
   } finally {
     for (const r of records) setWorkerActivity(r.id, undefined);
   }

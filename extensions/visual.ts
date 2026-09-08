@@ -1,5 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { stripTerminalSequences, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Todo } from "./types.ts";
 import type { WorkerRecord } from "./workers.ts";
 
@@ -52,7 +52,7 @@ export function glyphSet(icons: UiIcons): GlyphSet {
     dot: ascii ? ASCII_DOTS : NERD_DOTS,
     select: ascii ? ">" : "❯",
     bullet: ascii ? "-" : "•",
-    ellipsis: "…",
+    ellipsis: ascii ? "..." : "…",
   };
 }
 
@@ -70,6 +70,12 @@ export const identityTheme: Theme = {
 } as unknown as Theme;
 
 const flat = (text: string) => text.replace(/\r\n?|\n/g, " ");
+
+export function safeText(text: string): string {
+  return stripTerminalSequences(text).replace(/\r\n?/g, "\n").replace(/\t/g, "  ").replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, "");
+}
+
+export const single = (text: string) => safeText(text).replace(/[\n\u2028\u2029]/g, " ");
 
 const glyphEllipsis = "…";
 
@@ -120,7 +126,7 @@ export function treeList<T>(options: {
 
 export function moreRow(remaining: number, itemType: string, skin: Skin): string {
   const plural = remaining === 1 ? itemType : `${itemType}s`;
-  return `${glyphEllipsis} ${remaining} more ${plural}`;
+  return `${skin.glyphs.ellipsis} ${remaining} more ${plural}`;
 }
 
 export function stateBorder(state: CardState | undefined, theme: Theme): (text: string) => string {
@@ -181,11 +187,12 @@ export function argsInline(args: Record<string, unknown>, maxWidth: number): str
     const key = keys[i];
     const sep = width > 0 ? ", " : "";
     const remaining = i === keys.length - 1 ? maxWidth - width - sep.length : budget(i, maxWidth - width - sep.length);
-    if (remaining < visibleWidth(key) + 2) {
+    const quoted = typeof args[key] === "string";
+    if (remaining < visibleWidth(key) + (quoted ? 4 : 2)) {
       if (pieces.length) pieces.push(glyphEllipsis);
       break;
     }
-    const value = scalar(args[key], Math.min(40, remaining - visibleWidth(key) - 1));
+    const value = scalar(args[key], Math.max(1, Math.min(40, remaining - visibleWidth(key) - 1 - (quoted ? 2 : 0))));
     const piece = `${key}=${value}`;
     pieces.push(piece);
     width += sep.length + visibleWidth(piece);
@@ -196,7 +203,7 @@ export function argsInline(args: Record<string, unknown>, maxWidth: number): str
 function scalar(value: unknown, maxLen: number): string {
   if (value === null || value === undefined) return "null";
   if (typeof value === "boolean" || typeof value === "number") return String(value);
-  if (typeof value === "string") return `"${truncateToWidth(value.replace(/\n/g, "\\n"), maxLen, "…")}"`;
+  if (typeof value === "string") return `"${truncateToWidth(safeText(value).replace(/\n/g, "\\n"), maxLen, "…")}"`;
   if (Array.isArray(value)) return `[${value.length} items]`;
   if (typeof value === "object") return `{${Object.keys(value as object).length} keys}`;
   return String(value);

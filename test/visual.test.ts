@@ -48,7 +48,7 @@ test("treeList emits branch glyphs, summary rows and honors trailingSummary mode
     assert.ok(full[3].includes(skin.glyphs.tree.last));
     const capped = treeList({ items, maxCollapsed: 2, itemType: "todo", renderItem: i => i }, skin);
     assert.equal(capped.length, 3);
-    assert.match(capped[2], new RegExp(`^${skin.glyphs.tree.last} … 2 more todos`));
+    assert.match(capped[2], new RegExp(`^${skin.glyphs.tree.last} ${skin.glyphs.ellipsis} 2 more todos`));
     const expanded = treeList({ items, expanded: true, maxCollapsed: 1, renderItem: i => i }, skin);
     assert.equal(expanded.length, 4);
     assert.ok(!expanded.some(l => l.includes("more")));
@@ -107,7 +107,7 @@ test("framedBlock embeds header and footer labels in bars, content inside border
 
 test("argsInline clips to width with ellipsis and formats scalars", () => {
   assert.equal(argsInline({ action: "list", id: "x" }, 60), 'action="list", id="x"');
-  assert.equal(stripTerminalSequences(argsInline({ a: "one two three four five six seven", b: "kept" }, 24)), 'a="one two three f…", …');
+  assert.equal(stripTerminalSequences(argsInline({ a: "one two three four five six seven", b: "kept" }, 24)), 'a="one two three…", …');
   assert.equal(argsInline({ todos: [{}, {}, {}] }, 30), "todos=[3 items]");
   assert.equal(argsInline({ cfg: { x: 1 } }, 30), "cfg={1 keys}");
   assert.equal(argsInline({ n: 5, flag: true }, 30), "n=5, flag=true");
@@ -120,4 +120,17 @@ test("framedBlock never grows beyond two bars plus content rows", () => {
   const body = treeList({ items: todos.slice(0, 8), renderItem: t => t.content }, skins[0]);
   const lines = framedBlock({ header: "T", sections: [{ lines: body }], width: 40 }, skins[0]);
   assert.equal(lines.length, 2 + body.length);
+});
+
+test("moreRow honors the skin ellipsis and quoted args stay within budget", () => {
+  assert.ok(moreRow(2, "worker", asciiSkin).startsWith("..."));
+  assert.ok(moreRow(2, "worker", skins[0]).startsWith("…"));
+  for (let width = 1; width <= 120; width++) {
+    assert.ok(visibleWidth(argsInline({ name: "averylongstringvalue" }, width)) <= width);
+  }
+});
+
+test("argsInline sanitizes control sequences in string scalars", () => {
+  const line = argsInline({ cmd: "\x1b[31mred\x1b[0m\x07bad" }, 60);
+  assert.ok(!line.includes("\x1b") && !line.includes("\x07"));
 });
