@@ -87,7 +87,7 @@ const viewState = (view: View, error: boolean, partial: boolean): CardState => {
 };
 
 const detailCard = (header: string, state: CardState, sections: { label?: string; lines: readonly string[] }[], footer: string, width: number, skin: Skin): string[] => {
-  let room = 10;
+  let room = BUDGETS.detailBody;
   const capped = sections.map(s => {
     const lines = s.label ? s.lines.slice(0, Math.max(0, room - 1)) : s.lines.slice(0, room);
     room -= lines.length + (s.label ? 1 : 0);
@@ -319,8 +319,8 @@ export class TodoBrowser {
     }
     const header = statusLine({ icon: todo.status, title: single(todo.content) }, skin);
     const body = wrapTextWithAnsi(safeText(todo.content), Math.max(1, width - 4));
-    const at = Math.min(this.scroll, Math.max(0, body.length - 12));
-    const page = body.slice(at, at + 12);
+    const at = Math.min(this.scroll, Math.max(0, body.length - BUDGETS.detailBody));
+    const page = body.slice(at, at + BUDGETS.detailBody);
     return detailCard(header, cardState[todo.status], [{ lines: page.map(l => clip(l, width - 4)) }], `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length} · Up/Down scroll · Esc back`, width, skin);
   }
 }
@@ -414,8 +414,9 @@ export class WorkerBrowser {
     let report: string;
     try { report = this.readReport(worker); } catch { report = `Report unreadable\n${worker.report}`; }
     const body = wrapTextWithAnsi(report, Math.max(1, width - 4));
-    const at = Math.min(this.scroll, Math.max(0, body.length - 8));
-    const page = body.slice(at, at + 8);
+    const pageSize = Math.max(0, BUDGETS.detailBody - meta.length - 1);
+    const at = Math.min(this.scroll, Math.max(0, body.length - pageSize));
+    const page = body.slice(at, at + pageSize);
     return detailCard(header, cardState[worker.status], [{ lines: meta.map(l => clip(l, width - 4)) }, { label: "Report", lines: page.map(l => clip(l, width - 4)) }], `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length} · Up/Down scroll · Esc back`, width, skin);
   }
 }

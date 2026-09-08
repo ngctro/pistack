@@ -201,12 +201,13 @@ export function argsInline(args: Record<string, unknown>, maxWidth: number): str
 }
 
 function scalar(value: unknown, maxLen: number): string {
-  if (value === null || value === undefined) return "null";
-  if (typeof value === "boolean" || typeof value === "number") return String(value);
   if (typeof value === "string") return `"${truncateToWidth(safeText(value).replace(/\n/g, "\\n"), maxLen, "…")}"`;
-  if (Array.isArray(value)) return `[${value.length} items]`;
-  if (typeof value === "object") return `{${Object.keys(value as object).length} keys}`;
-  return String(value);
+  const cap = (text: string) => truncateToWidth(text, maxLen, "…");
+  if (value === null || value === undefined) return cap("null");
+  if (typeof value === "boolean" || typeof value === "number") return cap(String(value));
+  if (Array.isArray(value)) return cap(`[${value.length} items]`);
+  if (typeof value === "object") return cap(`{${Object.keys(value as object).length} keys}`);
+  return cap(String(value));
 }
 
 export const BUDGETS = {
@@ -216,6 +217,7 @@ export const BUDGETS = {
   widgetRows: 5,
   widgetTaskRows: 3,
   tailCells: 6,
+  detailBody: 10,
   frameMinWidth: 8,
   modelAtWidth: 60,
 } as const;

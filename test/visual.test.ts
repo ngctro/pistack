@@ -70,6 +70,7 @@ test("multi-line rows get spine continuations and line count never varies with i
     assert.ok(lines[1].includes(skin.glyphs.tree.vertical));
     const counts = new Set<number>();
     treeList({ items: ["x"], renderItem: (item, ctx) => { counts.add(row(item).length + (ctx.isLast ? 1 : 0)); return row(item); } }, skin);
+    assert.deepEqual([...counts], [2]);
   }
 });
 
@@ -129,6 +130,7 @@ test("moreRow honors the skin ellipsis and quoted args stay within budget", () =
   assert.ok(moreRow(2, "worker", skins[0]).startsWith("…"));
   for (let width = 1; width <= 120; width++) {
     assert.ok(visibleWidth(argsInline({ name: "averylongstringvalue" }, width)) <= width);
+    assert.ok(visibleWidth(argsInline({ arr: new Array(100000).fill(0), n: 0.30000000000000004 }, width)) <= width);
   }
 });
 

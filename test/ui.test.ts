@@ -211,7 +211,7 @@ test("browsers take q/j/k, guard empty lists and clamp detail scroll", () => {
   long.handleInput("\r");
   for (let i = 0; i < 60; i++) long.handleInput("j");
   const detail = long.render(80, theme).join("\n");
-  assert.match(detail, /Line 39-50 of 50/);
+  assert.match(detail, /Line 41-50 of 50/);
   const emptyWorkers = new WorkerBrowser(() => []);
   assert.equal(emptyWorkers.handleInput("\r"), "stay");
   assert.equal(emptyWorkers.handleInput("q"), "close");
@@ -267,18 +267,23 @@ test("worker activity repaints an open workers overlay and stops after close", a
     },
   } as unknown as ExtensionContext;
   await showWorkers(ctx, () => records);
-  setWorkerActivity(id, "overlay work");
-  assert.equal(renders, 1);
-  setWorkerActivity(id, "overlay work");
-  assert.equal(renders, 1);
-  setWorkerActivity("absent-id", undefined);
-  assert.equal(renders, 1);
-  comp.handleInput("\x1b");
-  assert.ok(finished);
-  setWorkerActivity(id, "later work");
-  assert.equal(renders, 1);
-  setWorkerActivity(id, undefined);
-  assert.equal(renders, 1);
+  try {
+    setWorkerActivity(id, "overlay work");
+    assert.equal(renders, 1);
+    setWorkerActivity(id, "overlay work");
+    assert.equal(renders, 1);
+    setWorkerActivity("absent-id", undefined);
+    assert.equal(renders, 1);
+    comp.handleInput("\x1b");
+    assert.ok(finished);
+    setWorkerActivity(id, "later work");
+    assert.equal(renders, 1);
+    setWorkerActivity(id, undefined);
+    assert.equal(renders, 1);
+  } finally {
+    setWorkerActivity(id, undefined);
+    try { comp.handleInput("\x1b"); } catch { /* already closed */ }
+  }
 });
 
 test("expanded workers card keeps whole activity blocks within budget", () => {
@@ -339,4 +344,25 @@ test("worker browser keeps the selected worker when trimming long lists", () => 
   } finally {
     for (const r of records) setWorkerActivity(r.id, undefined);
   }
+});
+
+test("detail pages report exactly the lines the card shows", () => {
+  const lines30 = Array.from({ length: 30 }, (_, i) => `content line ${i}`).join("\n");
+  const todos = new TodoBrowser(() => [{ id: "d", content: lines30, status: "pending" }]);
+  todos.handleInput("\r");
+  for (const width of [20, 40, 80, 120]) bounded(todos.render(width, theme), width, 12);
+  assert.ok(todos.render(80, theme).join("\n").includes("Line 1-10 of 30"));
+  for (let i = 0; i < 30; i++) todos.handleInput("j");
+  const tail = todos.render(80, theme).join("\n");
+  assert.ok(tail.includes("Line 21-30 of 30"));
+  assert.ok(tail.includes("content line 29"));
+  const records = [{ ...worker, id: "de7a1111-1111-2222-3333-444444444444", status: "running" } as WorkerRecord];
+  const workers = new WorkerBrowser(() => records, () => lines30);
+  workers.handleInput("\r");
+  for (const width of [20, 40, 80, 120]) bounded(workers.render(width, theme), width, 12);
+  assert.ok(workers.render(80, theme).join("\n").includes("Line 1-5 of 30"));
+  for (let i = 0; i < 30; i++) workers.handleInput("j");
+  const wtail = workers.render(80, theme).join("\n");
+  assert.ok(wtail.includes("Line 26-30 of 30"));
+  assert.ok(wtail.includes("content line 29"));
 });
