@@ -57,8 +57,15 @@ const workerRow = (worker: WorkerRecord, skin: Skin, width: number): string => {
 
 const cardState: Record<Todo["status"] | WorkerRecord["status"], CardState> = { pending: "pending", in_progress: "running", completed: "success", running: "running", done: "success", failed: "error", cancelled: "warning" };
 
-const detailCard = (header: string, state: CardState, sections: { label?: string; lines: readonly string[] }[], footer: string, width: number, skin: Skin): string[] =>
-  framedBlock({ header, state, sections, footerMeta: footer, width }, skin).map(l => clip(l, width));
+const detailCard = (header: string, state: CardState, sections: { label?: string; lines: readonly string[] }[], footer: string, width: number, skin: Skin): string[] => {
+  let room = 10;
+  const capped = sections.map(s => {
+    const lines = s.label ? s.lines.slice(0, Math.max(0, room - 1)) : s.lines.slice(0, room);
+    room -= lines.length + (s.label ? 1 : 0);
+    return { ...s, lines };
+  });
+  return framedBlock({ header, state, sections: capped, footerMeta: footer, width }, skin).map(l => clip(l, width));
+};
 
 const windowed = <T>(rows: readonly T[], index: number, count: number): { start: number; rows: T[] } => {
   const start = Math.max(0, Math.min(index - 4, rows.length - count));

@@ -130,6 +130,10 @@ test("todo browser selects, details, scrolls and closes within bounds", () => {
   assert.match(relabeled, /second task/);
   assert.ok(relabeled.includes(marker) && relabeled.split("\n").find(l => l.startsWith(marker))!.includes("second task"));
   assert.deepEqual(new TodoBrowser(() => []).render(40, theme), ["No todos"]);
+  const longDetail = new TodoBrowser(() => [{ id: "x", content: Array(50).fill("line").join("\n"), status: "pending" }]);
+  longDetail.handleInput("\r");
+  for (let i = 0; i < 60; i++) longDetail.handleInput("j");
+  for (let width = 1; width <= 120; width++) bounded(longDetail.render(width, theme), width, 12);
 });
 
 test("worker browser lists, details, refreshes and reports missing files", () => {
@@ -163,6 +167,9 @@ test("worker browser lists, details, refreshes and reports missing files", () =>
   fallback.handleInput("\r");
   assert.match(fallback.render(80, theme).join("\n"), /Report not available yet/);
   assert.deepEqual(new WorkerBrowser(() => []).render(40, theme), ["No workers"]);
+  const tiny = new WorkerBrowser(() => records, () => "report line 1\nreport line 2");
+  tiny.handleInput("\r");
+  for (let width = 1; width <= 120; width++) bounded(tiny.render(width, theme), width, 12);
 });
 
 test("ui preferences validate, sync and drive the working indicator", () => {
