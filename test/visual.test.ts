@@ -139,3 +139,13 @@ test("argsInline sanitizes control sequences in string scalars", () => {
   const line = argsInline({ cmd: "\x1b[31mred\x1b[0m\x07bad" }, 60);
   assert.ok(!line.includes("\x1b") && !line.includes("\x07"));
 });
+
+test("treeList gives the hook to the last rendered row and escapes arg quotes", () => {
+  for (const skin of skins) {
+    const lines = treeList({ items: ["a", "b"], renderItem: i => (i === "b" ? [] : i) }, skin);
+    assert.equal(lines.length, 1);
+    assert.ok(lines[0].includes(skin.glyphs.tree.last));
+    assert.ok(!lines[0].includes(skin.glyphs.tree.branch));
+  }
+  assert.ok(argsInline({ prompt: 'say "hi" \\ bye' }, 60).includes('say \\"hi\\" \\\\ bye'));
+});

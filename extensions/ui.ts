@@ -87,9 +87,14 @@ const cardState: Record<Todo["status"] | WorkerRecord["status"], CardState> = { 
 const viewState = (view: View, error: boolean, partial: boolean): CardState => {
   if (error) return "error";
   if (partial) return "warning";
-  if (view.kind === "workers" && view.rows.some(w => w.status === "failed" || w.error)) return "error";
+  if (view.kind === "workers") {
+    if (view.rows.some(w => w.status === "failed" || w.error)) return "error";
+    if (view.rows.some(w => w.status === "running")) return "running";
+  }
   return "success";
 };
+
+const stateIcon = (state: CardState, kind: View["kind"]) => state === "error" ? "failed" : state === "warning" ? "partial" : state === "running" ? "running" : kind === "text" ? "info" : "done";
 
 const detailCard = (header: string, state: CardState, sections: { label?: string; lines: readonly string[] }[], footer: string, width: number, skin: Skin): string[] => {
   let room = BUDGETS.detailBody;
@@ -171,7 +176,7 @@ function collapsedCard(name: string, view: View, text: string, width: number, er
   const state: CardState = viewState(view, error, partial);
   const failed = state === "error";
   const progress = state === "warning";
-  const icon = failed ? "failed" : progress ? "partial" : view.kind === "text" ? "info" : "done";
+  const icon = stateIcon(state, view.kind);
   const badge = failed ? { label: "Error", color: "error" as const } : progress ? { label: "Partial", color: "warning" as const } : undefined;
   const header = statusLine({ icon, title: base, badge, meta: view.kind === "text" ? [] : [counts(view.rows)] }, skin);
   const artifact = safeText(text).match(/\[Truncated[^\n]*Full output: ([^\n]+)\]/)?.[1];
@@ -190,7 +195,7 @@ function collapsedCard(name: string, view: View, text: string, width: number, er
 function expandedCard(name: string, view: View, text: string, details: unknown, width: number, error: boolean, partial: boolean, skin: Skin): string[] {
   const base = name.replace("pstack_", "");
   const state: CardState = viewState(view, error, partial);
-  const header = statusLine({ icon: state === "error" ? "failed" : state === "warning" ? "partial" : view.kind === "text" ? "info" : "done", title: base, meta: view.kind === "text" ? [] : [counts(view.rows)] }, skin);
+  const header = statusLine({ icon: stateIcon(state, view.kind), title: base, meta: view.kind === "text" ? [] : [counts(view.rows)] }, skin);
   const inner = Math.max(1, Math.max(width, BUDGETS.frameMinWidth) - 4);
   const sections: { label?: string; lines: string[] }[] = [];
   if (view.kind === "todos" && view.rows.length) sections.push({ lines: cappedTree(view.rows, "todo", t => todoRow(t, skin), skin) });
@@ -326,7 +331,7 @@ export class TodoBrowser {
     const body = wrapTextWithAnsi(safeText(todo.content), Math.max(1, width - 4));
     const at = Math.min(this.scroll, Math.max(0, body.length - BUDGETS.detailBody));
     const page = body.slice(at, at + BUDGETS.detailBody);
-    return detailCard(header, cardState[todo.status], [{ lines: page.map(l => clip(l, width - 4)) }], `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length} · Up/Down scroll · Esc back`, width, skin);
+    return detailCard(header, cardState[todo.status], [{ lines: page.map(l => clip(l, Math.max(1, width - 4))) }], `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length} · Up/Down scroll · Esc back`, width, skin);
   }
 }
 export const defaultReadReport = (record: WorkerRecord): string => {
@@ -422,7 +427,7 @@ export class WorkerBrowser {
     const pageSize = Math.max(0, BUDGETS.detailBody - meta.length - 1);
     const at = Math.min(this.scroll, Math.max(0, body.length - pageSize));
     const page = body.slice(at, at + pageSize);
-    return detailCard(header, cardState[worker.status], [{ lines: meta.map(l => clip(l, width - 4)) }, { label: "Report", lines: page.map(l => clip(l, width - 4)) }], `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length} · Up/Down scroll · Esc back`, width, skin);
+    return detailCard(header, cardState[worker.status], [{ lines: meta.map(l => clip(l, Math.max(1, width - 4))) }, { label: "Report", lines: page.map(l => clip(l, Math.max(1, width - 4))) }], `Line ${body.length ? at + 1 : 0}-${at + page.length} of ${body.length} · Up/Down scroll · Esc back`, width, skin);
   }
 }
 export async function showTodos(ctx: ExtensionContext, read: () => readonly Todo[]): Promise<void> {

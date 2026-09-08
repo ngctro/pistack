@@ -106,6 +106,7 @@ export function treeList<T>(options: {
   const callerDriven = !options.expanded && options.trailingSummary !== undefined;
   const summary = callerDriven ? options.trailingSummary : (cap < options.items.length ? moreRow(options.items.length - cap, options.itemType ?? "item", skin) : undefined);
   const lines: string[] = [];
+  const shaped: string[][] = [];
   const emit = (rendered: string[], last: boolean) => {
     const branch = theme.fg("dim", last ? glyphs.tree.last : glyphs.tree.branch);
     const spine = theme.fg("dim", `${glyphs.tree.vertical}  `);
@@ -115,9 +116,9 @@ export function treeList<T>(options: {
   for (let i = 0; i < cap; i++) {
     const rendered = options.renderItem(options.items[i], { index: i, isLast: false, skin });
     const rows = Array.isArray(rendered) ? rendered : rendered ? [rendered] : [];
-    if (!rows.length) continue;
-    emit(rows, i === cap - 1 && !summary);
+    if (rows.length) shaped.push(rows);
   }
+  shaped.forEach((rows, j) => emit(rows, j === shaped.length - 1 && !summary));
   if (summary !== undefined && summary !== "") {
     lines.push(`${theme.fg("dim", glyphs.tree.last)} ${theme.fg("muted", summary)}`);
   }
@@ -204,7 +205,7 @@ export function argsInline(args: Record<string, unknown>, maxWidth: number): str
 }
 
 function scalar(value: unknown, maxLen: number): string {
-  if (typeof value === "string") return `"${truncateToWidth(safeText(value).replace(/\n/g, "\\n"), maxLen, "…")}"`;
+  if (typeof value === "string") return `"${truncateToWidth(safeText(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n"), maxLen, "…")}"`;
   const cap = (text: string) => truncateToWidth(text, maxLen, "…");
   if (value === null || value === undefined) return cap("null");
   if (typeof value === "boolean" || typeof value === "number") return cap(String(value));

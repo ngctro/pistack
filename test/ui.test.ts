@@ -12,8 +12,8 @@ import { output } from "../extensions/output.ts";
 initTheme("dark", false);
 type ToolRenderContext = Parameters<NonNullable<ToolDefinition["renderCall"]>>[2];
 const theme = identityTheme;
-const marker = glyphSet(uiPreferences.icons).select;
-const selectedRow = (lines: string[]) => lines.find(l => l.startsWith(marker));
+const marker = () => glyphSet(uiPreferences.icons).select;
+const selectedRow = (lines: string[]) => lines.find(l => l.startsWith(marker()));
 const context = (args = {}, error = false, partial = false): ToolRenderContext => ({ args, state: {}, isError: error, isPartial: partial } as ToolRenderContext);
 const widths = [1, 20, 40, 80, 120];
 const todos: Todo[] = ["pending", "in_progress", "completed"].map((status, i) => ({ id: String(i), content: "café 界 👩‍💻\n".repeat(30), status } as Todo));
@@ -124,11 +124,11 @@ test("todo browser selects, details, scrolls and closes within bounds", () => {
   assert.match(detail, /Line 1-/);
   browser.handleInput("\x1b[B");
   browser.handleInput("\x1b");
-  assert.equal(browser.render(80, theme).filter(l => l.startsWith(marker)).length, 1);
+  assert.equal(browser.render(80, theme).filter(l => l.startsWith(marker())).length, 1);
   rows.unshift({ id: "z", content: "inserted first", status: "pending" });
   const relabeled = browser.render(80, theme).join("\n");
   assert.match(relabeled, /second task/);
-  assert.ok(relabeled.includes(marker) && relabeled.split("\n").find(l => l.startsWith(marker))!.includes("second task"));
+  assert.ok(relabeled.includes(marker()) && relabeled.split("\n").find(l => l.startsWith(marker()))!.includes("second task"));
   assert.deepEqual(new TodoBrowser(() => []).render(40, theme), ["No todos"]);
   const longDetail = new TodoBrowser(() => [{ id: "x", content: Array(50).fill("line").join("\n"), status: "pending" }]);
   longDetail.handleInput("\r");
@@ -368,4 +368,16 @@ test("detail pages report exactly the lines the card shows", () => {
   const wtail = workers.render(80, theme).join("\n");
   assert.ok(wtail.includes("Line 26-30 of 30"));
   assert.ok(wtail.includes("content line 29"));
+});
+
+test("running workers tint the card running and quote-heavy args stay readable", () => {
+  const running = [{ ...worker, id: "runrun11-1111-2222-3333-444444444444", status: "running" } as WorkerRecord];
+  const mark = { ...identityTheme, fg: (c: string, text: string) => `<${c}>${text}</>` } as unknown as typeof theme;
+  const slots = toolPresentation("pstack_workers");
+  const top = slots.renderResult!(output(JSON.stringify(running)), { expanded: false, isPartial: false }, mark, context({ action: "list" })).render(80)[0];
+  assert.ok(top.includes("<accent>"));
+  assert.ok(top.includes("◐"));
+  assert.ok(!top.includes("●"));
+  const expandedTop = slots.renderResult!(output(JSON.stringify(running)), { expanded: true, isPartial: false }, mark, context({ action: "list" })).render(80)[0];
+  assert.ok(expandedTop.includes("◐"));
 });
