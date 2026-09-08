@@ -136,27 +136,23 @@ const workerTree = (rows: readonly WorkerRecord[], budget: number, skin: Skin, w
 };
 
 const cappedTree = <T>(items: readonly T[], itemType: string, renderItem: (item: T) => string | string[], skin: Skin): string[] => {
-  const { theme, glyphs } = skin;
-  const blocks: string[][] = [];
-  for (const item of items) {
+  const blocks = items.map(item => {
     const rendered = renderItem(item);
     const rows = Array.isArray(rendered) ? rendered : rendered ? [rendered] : [];
-    if (!rows.length) continue;
-    blocks.push(rows);
+    return { item, rows };
+  }).filter(b => b.rows.length);
+  if (blocks.reduce((n, b) => n + b.rows.length, 0) <= BUDGETS.expandedBody) {
+    return treeList({ items: blocks.map(b => b.item), expanded: true, renderItem }, skin);
   }
-  const branch = (last: boolean) => theme.fg("dim", last ? glyphs.tree.last : glyphs.tree.branch);
-  const spine = theme.fg("dim", `${glyphs.tree.vertical}  `);
-  const format = (rows: string[], last: boolean): string[] => [`${branch(last)} ${rows[0]}`, ...rows.slice(1).map(line => `${spine}${line}`)];
-  if (blocks.reduce((n, b) => n + b.length, 0) <= BUDGETS.expandedBody) return blocks.flatMap((b, i) => format(b, i === blocks.length - 1));
-  const kept: string[][] = [];
+  const kept: typeof blocks = [];
   let used = 0;
   for (const b of blocks) {
-    if (used + b.length > BUDGETS.expandedBody - 1) break;
+    if (used + b.rows.length > BUDGETS.expandedBody - 1) break;
     kept.push(b);
-    used += b.length;
+    used += b.rows.length;
   }
-  const remainder = items.length - kept.length;
-  return [...kept.flatMap(b => format(b, false)), `${theme.fg("dim", glyphs.tree.last)} ${theme.fg("muted", moreRow(remainder, itemType, skin))}`];
+  const remainder = blocks.length - kept.length;
+  return treeList({ items: kept.map(b => b.item), maxCollapsed: Math.max(kept.length, 1), trailingSummary: moreRow(remainder, itemType, skin), renderItem }, skin);
 };
 
 const expandHint = (skin: Skin) => skin.theme.fg("dim", keyHint("app.tools.expand", "full result"));
