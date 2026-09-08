@@ -115,6 +115,7 @@ test("argsInline clips to width with ellipsis and formats scalars", () => {
   assert.equal(argsInline({ cfg: { x: 1 } }, 30), "cfg={1 keys}");
   assert.equal(argsInline({ n: 5, flag: true }, 30), "n=5, flag=true");
   assert.equal(argsInline({}, 30), "");
+  assert.equal(argsInline({ a: 1, b: "x" }, 9), "a=1, …");
   assert.equal(argsInline({ a: "x" }, 1), "");
 });
 

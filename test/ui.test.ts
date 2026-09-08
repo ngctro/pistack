@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { initTheme, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { glyphSet, identityTheme, safeText } from "../extensions/visual.ts";
-import { TodoBrowser, WorkerBrowser, indicatorOptions, messagePresentation, setWorkerActivity, showWorkers, syncPreferences, toolPresentation, todoWidget, uiPreferences, workerActivity, type Todo, type UiPreferences } from "../extensions/ui.ts";
+import { TodoBrowser, WorkerBrowser, indicatorOptions, messagePresentation, setWorkerActivity, settleWorkerActivity, showWorkers, syncPreferences, toolPresentation, todoWidget, uiPreferences, workerActivity, type Todo, type UiPreferences } from "../extensions/ui.ts";
 import { Config } from "../extensions/config.ts";
 import { Value } from "typebox/value";
 import type { WorkerRecord } from "../extensions/workers.ts";
@@ -274,12 +274,15 @@ test("worker activity repaints an open workers overlay and stops after close", a
     assert.equal(renders, 1);
     setWorkerActivity("absent-id", undefined);
     assert.equal(renders, 1);
+    settleWorkerActivity("quiet-id");
+    assert.equal(renders, 2);
+    assert.ok(!workerActivity.has("quiet-id"));
     comp.handleInput("\x1b");
     assert.ok(finished);
     setWorkerActivity(id, "later work");
-    assert.equal(renders, 1);
+    assert.equal(renders, 2);
     setWorkerActivity(id, undefined);
-    assert.equal(renders, 1);
+    assert.equal(renders, 2);
   } finally {
     setWorkerActivity(id, undefined);
     try { comp.handleInput("\x1b"); } catch { /* already closed */ }

@@ -186,10 +186,13 @@ export function argsInline(args: Record<string, unknown>, maxWidth: number): str
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
     const sep = width > 0 ? ", " : "";
-    const remaining = i === keys.length - 1 ? maxWidth - width - sep.length : budget(i, maxWidth - width - sep.length);
     const quoted = typeof args[key] === "string";
-    if (remaining < visibleWidth(key) + (quoted ? 4 : 2)) {
-      if (pieces.length) pieces.push(glyphEllipsis);
+    const minimum = visibleWidth(key) + (quoted ? 4 : 2);
+    const raw = maxWidth - width - sep.length;
+    const reserved = i === keys.length - 1 ? raw : budget(i, raw);
+    const remaining = reserved < minimum ? raw : reserved;
+    if (remaining < minimum) {
+      if (pieces.length && width + sep.length + visibleWidth(glyphEllipsis) <= maxWidth) pieces.push(glyphEllipsis);
       break;
     }
     const value = scalar(args[key], Math.max(1, Math.min(40, remaining - visibleWidth(key) - 1 - (quoted ? 2 : 0))));

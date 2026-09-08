@@ -48,6 +48,11 @@ export function setWorkerActivity(id: string, activity: string | undefined): voi
   requestOverlayRender?.();
 }
 
+export function settleWorkerActivity(id: string): void {
+  workerActivity.delete(id);
+  requestOverlayRender?.();
+}
+
 export function workerActivityOf(worker: { id: string; status: string }): string {
   const activity = workerActivity.get(worker.id);
   if (worker.status !== "running") {

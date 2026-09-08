@@ -10,7 +10,7 @@ import { Type } from "typebox";
 import { modelChoices, readConfig, resolveModel } from "./config.ts";
 import { output } from "./output.ts";
 import { discoverAgents } from "./agents.ts";
-import { toolPresentation, messagePresentation, showWorkers, setWorkerActivity } from "./ui.ts";
+import { toolPresentation, messagePresentation, showWorkers, setWorkerActivity, settleWorkerActivity } from "./ui.ts";
 
 export const root = fileURLToPath(new URL("../", import.meta.url));
 export const Task = Type.Object({
@@ -154,12 +154,12 @@ export function registerWorkers(pi: ExtensionAPI) {
         const start = raw as { toolName?: unknown; args?: unknown };
         setWorkerActivity(id, activityPreview(typeof start.toolName === "string" && start.toolName ? start.toolName : "tool", start.args));
       }
-      if ((event.type === "response" && event.success === false) || event.type === "protocol_error") { record.error = event.error ?? "Invalid worker protocol"; setWorkerActivity(id, undefined); stop(); }
-      if (event.type === "agent_settled") { settled = true; setWorkerActivity(id, undefined); stop(); }
+      if ((event.type === "response" && event.success === false) || event.type === "protocol_error") { record.error = event.error ?? "Invalid worker protocol"; settleWorkerActivity(id); stop(); }
+      if (event.type === "agent_settled") { settled = true; settleWorkerActivity(id); stop(); }
     });
     child.on("error", error => { record.error = error.message; });
     child.on("close", () => {
-      exited = true; clearTimeout(killTimer); setWorkerActivity(id, undefined);
+      exited = true; clearTimeout(killTimer); settleWorkerActivity(id);
       if (record.status !== "cancelled") record.status = settled && !record.error ? "done" : "failed";
       if (record.status === "failed" && !record.error) record.error = stderr || "Worker exited before completion";
       writeFileSync(record.report, text || record.error || record.status, { mode: 0o600 }); save(ctx, record); complete();
