@@ -151,3 +151,17 @@ test("treeList gives the hook to the last rendered row and escapes arg quotes", 
   }
   assert.ok(argsInline({ prompt: 'say "hi" \\ bye' }, 60).includes('say \\"hi\\" \\\\ bye'));
 });
+
+test("framedBlock pads short content to the right border at width 80", () => {
+  const lines = framedBlock({ header: "hi", sections: [{ lines: ["short", "x"] }], width: 80 }, asciiSkin);
+  assert.equal(lines.length, 4);
+  for (const line of lines) {
+    assert.equal(visibleWidth(line), 80);
+    assert.ok(!stripTerminalSequences(line).endsWith(" "));
+  }
+  for (const row of lines.slice(1, -1).map(l => stripTerminalSequences(l))) {
+    assert.equal(row.at(-1), "|");
+    assert.ok(row.endsWith(" |"));
+  }
+  assert.equal(stripTerminalSequences(lines[1]), "| short" + " ".repeat(72) + "|");
+});
