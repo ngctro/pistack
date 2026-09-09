@@ -171,3 +171,20 @@ test("truncateColored re-applies active color to the ellipsis", () => {
   assert.equal(out, "\x1b[36mabcdefg\x1b[0m\x1b[36m...\x1b[0m");
   assert.equal(visibleWidth(out), 10);
 });
+
+test("truncateColored colors clipped dots at ellipsis-only widths", () => {
+  const out = truncateColored("\x1b[36mabcdefgh\x1b[0m", 2);
+  assert.equal(out, "\x1b[36m..\x1b[0m");
+  assert.equal(visibleWidth(out), 2);
+});
+
+test("truncateColored splits compound SGR before removal", () => {
+  assert.equal(
+    truncateColored("\x1b[1;36mabcdefghi\x1b[0m", 8),
+    "\x1b[1;36mabcde\x1b[0m\x1b[1m\x1b[36m...\x1b[0m",
+  );
+  assert.equal(
+    truncateColored("\x1b[1;36mabc\x1b[39mdefghi\x1b[0m", 8),
+    "\x1b[1;36mabc\x1b[39mde\x1b[0m\x1b[1m...\x1b[0m",
+  );
+});

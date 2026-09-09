@@ -83,23 +83,63 @@ export function truncateColored(text: string, maxWidth: number, ellipsis = "..."
   if (!text.includes("\x1b")) return truncateToWidth(text, maxWidth, ellipsis);
   if (visibleWidth(text) <= maxWidth) return text;
   const ellipsisWidth = visibleWidth(ellipsis);
-  if (ellipsisWidth >= maxWidth) return truncateToWidth(text, maxWidth, ellipsis);
-  const kept = truncateToWidth(text, maxWidth - ellipsisWidth, "");
-  const body = kept.endsWith("\x1b[0m") ? kept.slice(0, -4) : kept;
   const active: string[] = [];
   const isFg = (c: string) => /^(3[0-7]|9[0-7]|38([;].*)?)$/.test(c);
   const isBg = (c: string) => /^(4[0-7]|10[0-7]|48([;].*)?)$/.test(c);
-  for (const m of body.matchAll(/\x1b\[([\d;]*)m/g)) {
-    const code = m[1];
-    if (code === "" || code === "0") active.length = 0;
-    else if (code === "22") {
-      for (let i = active.length - 1; i >= 0; i--) if (active[i] === "1" || active[i] === "2") active.splice(i, 1);
-    } else if (code === "39") {
-      for (let i = active.length - 1; i >= 0; i--) if (isFg(active[i])) active.splice(i, 1);
-    } else if (code === "49") {
-      for (let i = active.length - 1; i >= 0; i--) if (isBg(active[i])) active.splice(i, 1);
-    } else active.push(code);
+  const splitSgr = (code: string): string[] => {
+    if (code === "") return [""];
+    const parts = code.split(";");
+    const out: string[] = [];
+    for (let i = 0; i < parts.length;) {
+      const p = parts[i];
+      if (p === "") { out.push(""); i++; continue; }
+      const n = Number(p);
+      if (n === 38 || n === 48) {
+        const mode = parts[i + 1];
+        if (mode === "5") {
+          if (i + 2 < parts.length) { out.push(`${p};5;${parts[i + 2]}`); i += 3; }
+          else if (i + 1 < parts.length) { out.push(`${p};5`); i += 2; }
+          else { out.push(p); i += 1; }
+        } else if (mode === "2") {
+          if (i + 4 < parts.length) { out.push(`${p};2;${parts[i + 2]};${parts[i + 3]};${parts[i + 4]}`); i += 5; }
+          else { out.push(parts.slice(i).join(";")); i = parts.length; }
+        } else { out.push(p); i++; }
+      } else { out.push(p); i++; }
+    }
+    return out;
+  };
+  const applySgr = (code: string) => {
+    for (const e of splitSgr(code)) {
+      if (e === "" || (!e.includes(";") && Number(e) === 0)) active.length = 0;
+      else if (!e.includes(";") && Number(e) === 22) {
+        for (let i = active.length - 1; i >= 0; i--) if (!active[i].includes(";") && (Number(active[i]) === 1 || Number(active[i]) === 2)) active.splice(i, 1);
+      } else if (!e.includes(";") && Number(e) === 39) {
+        for (let i = active.length - 1; i >= 0; i--) if (isFg(active[i])) active.splice(i, 1);
+      } else if (!e.includes(";") && Number(e) === 49) {
+        for (let i = active.length - 1; i >= 0; i--) if (isBg(active[i])) active.splice(i, 1);
+      } else active.push(e);
+    }
+  };
+  const collectActive = (s: string) => {
+    for (const m of s.matchAll(/\x1b\[([\d;]*)m/g)) applySgr(m[1]);
+  };
+  if (ellipsisWidth >= maxWidth) {
+    const clippedRaw = truncateToWidth(stripTerminalSequences(ellipsis), maxWidth, "");
+    const clipped = clippedRaw.endsWith("\x1b[0m") ? clippedRaw.slice(0, -4) : clippedRaw;
+    if (clipped === "" || visibleWidth(clipped) === 0) return clipped;
+    let prefix = "";
+    for (let i = 0; i < text.length;) {
+      const m = /^\x1b\[[\d;]*m/.exec(text.slice(i));
+      if (!m) break;
+      prefix += m[0];
+      i += m[0].length;
+    }
+    collectActive(prefix);
+    return `${active.map((c) => `\x1b[${c}m`).join("")}${clipped}\x1b[0m`;
   }
+  const kept = truncateToWidth(text, maxWidth - ellipsisWidth, "");
+  const body = kept.endsWith("\x1b[0m") ? kept.slice(0, -4) : kept;
+  collectActive(body);
   return `${kept}${active.map((c) => `\x1b[${c}m`).join("")}${ellipsis}\x1b[0m`;
 }
 
