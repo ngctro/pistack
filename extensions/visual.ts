@@ -79,6 +79,70 @@ export const single = (text: string) => safeText(text).replace(/[\n\u2028\u2029]
 
 const glyphEllipsis = "…";
 
+export function truncateColored(text: string, maxWidth: number, ellipsis = "..."): string {
+  if (!text.includes("\x1b")) return truncateToWidth(text, maxWidth, ellipsis);
+  if (visibleWidth(text) <= maxWidth) return text;
+  const ellipsisWidth = visibleWidth(ellipsis);
+  const active: string[] = [];
+  const isFg = (c: string) => /^(3[0-7]|9[0-7]|38([;].*)?)$/.test(c);
+  const isBg = (c: string) => /^(4[0-7]|10[0-7]|48([;].*)?)$/.test(c);
+  const splitSgr = (code: string): string[] => {
+    if (code === "") return [""];
+    const parts = code.split(";");
+    const out: string[] = [];
+    for (let i = 0; i < parts.length;) {
+      const p = parts[i];
+      if (p === "") { out.push(""); i++; continue; }
+      const n = Number(p);
+      if (n === 38 || n === 48) {
+        const mode = parts[i + 1];
+        if (mode === "5") {
+          if (i + 2 < parts.length) { out.push(`${p};5;${parts[i + 2]}`); i += 3; }
+          else if (i + 1 < parts.length) { out.push(`${p};5`); i += 2; }
+          else { out.push(p); i += 1; }
+        } else if (mode === "2") {
+          if (i + 4 < parts.length) { out.push(`${p};2;${parts[i + 2]};${parts[i + 3]};${parts[i + 4]}`); i += 5; }
+          else { out.push(parts.slice(i).join(";")); i = parts.length; }
+        } else { out.push(p); i++; }
+      } else { out.push(p); i++; }
+    }
+    return out;
+  };
+  const applySgr = (code: string) => {
+    for (const e of splitSgr(code)) {
+      if (e === "" || (!e.includes(";") && Number(e) === 0)) active.length = 0;
+      else if (!e.includes(";") && Number(e) === 22) {
+        for (let i = active.length - 1; i >= 0; i--) if (!active[i].includes(";") && (Number(active[i]) === 1 || Number(active[i]) === 2)) active.splice(i, 1);
+      } else if (!e.includes(";") && Number(e) === 39) {
+        for (let i = active.length - 1; i >= 0; i--) if (isFg(active[i])) active.splice(i, 1);
+      } else if (!e.includes(";") && Number(e) === 49) {
+        for (let i = active.length - 1; i >= 0; i--) if (isBg(active[i])) active.splice(i, 1);
+      } else active.push(e);
+    }
+  };
+  const collectActive = (s: string) => {
+    for (const m of s.matchAll(/\x1b\[([\d;]*)m/g)) applySgr(m[1]);
+  };
+  if (ellipsisWidth >= maxWidth) {
+    const clippedRaw = truncateToWidth(stripTerminalSequences(ellipsis), maxWidth, "");
+    const clipped = clippedRaw.endsWith("\x1b[0m") ? clippedRaw.slice(0, -4) : clippedRaw;
+    if (clipped === "" || visibleWidth(clipped) === 0) return clipped;
+    let prefix = "";
+    for (let i = 0; i < text.length;) {
+      const m = /^\x1b\[[\d;]*m/.exec(text.slice(i));
+      if (!m) break;
+      prefix += m[0];
+      i += m[0].length;
+    }
+    collectActive(prefix);
+    return `${active.map((c) => `\x1b[${c}m`).join("")}${clipped}\x1b[0m`;
+  }
+  const kept = truncateToWidth(text, maxWidth - ellipsisWidth, "");
+  const body = kept.endsWith("\x1b[0m") ? kept.slice(0, -4) : kept;
+  collectActive(body);
+  return `${kept}${active.map((c) => `\x1b[${c}m`).join("")}${ellipsis}\x1b[0m`;
+}
+
 export function statusLine(options: {
   icon?: StatusKey; iconOverride?: string; title: string; titleColor?: ThemeColor;
   description?: string; badge?: { label: string; color: ThemeColor }; meta?: string[];
@@ -151,11 +215,11 @@ export function framedBlock(options: {
   const bar = (left: string, right: string, label?: string) => {
     const edge = `${left}${glyphs.box.horizontal.repeat(2)}`;
     const labelWidth = Math.max(0, width - visibleWidth(edge) - visibleWidth(right));
-    const text = label && labelWidth >= 3 ? truncateToWidth(` ${flat(label)} `, labelWidth) : "";
+    const text = label && labelWidth >= 3 ? truncateColored(` ${flat(label)} `, labelWidth) : "";
     const fill = glyphs.box.horizontal.repeat(Math.max(0, width - visibleWidth(edge) - visibleWidth(text) - visibleWidth(right)));
     return `${border(edge)}${text}${border(fill)}${border(right)}`;
   };
-  const content = (line: string) => `${border(glyphs.box.vertical)} ${pad(truncateToWidth(line, inner), inner)} ${border(glyphs.box.vertical)}`;
+  const content = (line: string) => `${border(glyphs.box.vertical)} ${pad(truncateColored(line, inner), inner)} ${border(glyphs.box.vertical)}`;
   const lines: string[] = [];
   const header = [options.header, options.headerMeta].filter(Boolean).join(" · ") || undefined;
   lines.push(bar(glyphs.box.topLeft, glyphs.box.topRight, header));
