@@ -1,15 +1,15 @@
 import { keyHint, type ExtensionContext, type MessageRenderer, type Theme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
+import { matchesKey, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import { readFileSync } from "node:fs";
 import type { WorkerRecord } from "./workers.ts";
-import { argsInline, BUDGETS, framedBlock, glyphSet, identityTheme, moreRow, safeText, single, statusLine, treeList, type CardState, type Skin } from "./visual.ts";
+import { argsInline, BUDGETS, framedBlock, glyphSet, identityTheme, moreRow, safeText, single, statusLine, treeList, truncateColored, type CardState, type Skin } from "./visual.ts";
 import type { Todo } from "./types.ts";
 
 export type { Todo } from "./types.ts";
 export type UiPreferences = { icons: "nerd" | "ascii"; motion: "off" | "active" };
 export const uiPreferences: UiPreferences = { icons: "nerd", motion: "active" };
 
-const clip = (text: string, width: number) => truncateToWidth(text, Math.max(0, width), "…");
+const clip = (text: string, width: number) => truncateColored(text, Math.max(0, width), "…");
 const activeFirst = (todos: readonly Todo[]) => [...todos.filter(t => t.status === "in_progress"), ...todos.filter(t => t.status === "pending")];
 const lastDone = (todos: readonly Todo[]) => todos.filter(t => t.status === "completed").at(-1);
 const statusOrder = ["pending", "in_progress", "completed", "running", "done", "failed", "cancelled"];
