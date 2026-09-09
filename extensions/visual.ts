@@ -79,6 +79,30 @@ export const single = (text: string) => safeText(text).replace(/[\n\u2028\u2029]
 
 const glyphEllipsis = "…";
 
+export function truncateColored(text: string, maxWidth: number, ellipsis = "..."): string {
+  if (!text.includes("\x1b")) return truncateToWidth(text, maxWidth, ellipsis);
+  if (visibleWidth(text) <= maxWidth) return text;
+  const ellipsisWidth = visibleWidth(ellipsis);
+  if (ellipsisWidth >= maxWidth) return truncateToWidth(text, maxWidth, ellipsis);
+  const kept = truncateToWidth(text, maxWidth - ellipsisWidth, "");
+  const body = kept.endsWith("\x1b[0m") ? kept.slice(0, -4) : kept;
+  const active: string[] = [];
+  const isFg = (c: string) => /^(3[0-7]|9[0-7]|38([;].*)?)$/.test(c);
+  const isBg = (c: string) => /^(4[0-7]|10[0-7]|48([;].*)?)$/.test(c);
+  for (const m of body.matchAll(/\x1b\[([\d;]*)m/g)) {
+    const code = m[1];
+    if (code === "" || code === "0") active.length = 0;
+    else if (code === "22") {
+      for (let i = active.length - 1; i >= 0; i--) if (active[i] === "1" || active[i] === "2") active.splice(i, 1);
+    } else if (code === "39") {
+      for (let i = active.length - 1; i >= 0; i--) if (isFg(active[i])) active.splice(i, 1);
+    } else if (code === "49") {
+      for (let i = active.length - 1; i >= 0; i--) if (isBg(active[i])) active.splice(i, 1);
+    } else active.push(code);
+  }
+  return `${kept}${active.map((c) => `\x1b[${c}m`).join("")}${ellipsis}\x1b[0m`;
+}
+
 export function statusLine(options: {
   icon?: StatusKey; iconOverride?: string; title: string; titleColor?: ThemeColor;
   description?: string; badge?: { label: string; color: ThemeColor }; meta?: string[];

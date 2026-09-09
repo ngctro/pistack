@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { initTheme, type Theme } from "@earendil-works/pi-coding-agent";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
-import { argsInline, framedBlock, glyphSet, identityTheme, moreRow, statusLine, treeList, type Skin } from "../extensions/visual.ts";
+import { argsInline, framedBlock, glyphSet, identityTheme, moreRow, statusLine, treeList, truncateColored, type Skin } from "../extensions/visual.ts";
 import type { Todo } from "../extensions/types.ts";
 
 initTheme("dark", false);
@@ -164,4 +164,10 @@ test("framedBlock pads short content to the right border at width 80", () => {
     assert.ok(row.endsWith(" |"));
   }
   assert.equal(stripTerminalSequences(lines[1]), "| short" + " ".repeat(72) + "|");
+});
+
+test("truncateColored re-applies active color to the ellipsis", () => {
+  const out = truncateColored("\x1b[36mabcdefghijklmnopqrstuvwxyz\x1b[0m", 10);
+  assert.equal(out, "\x1b[36mabcdefg\x1b[0m\x1b[36m...\x1b[0m");
+  assert.equal(visibleWidth(out), 10);
 });
