@@ -155,7 +155,7 @@ export function framedBlock(options: {
     const fill = glyphs.box.horizontal.repeat(Math.max(0, width - visibleWidth(edge) - visibleWidth(text) - visibleWidth(right)));
     return `${border(edge)}${text}${border(fill)}${border(right)}`;
   };
-  const content = (line: string) => `${border(glyphs.box.vertical)} ${truncateToWidth(line, inner)} ${border(glyphs.box.vertical)}`;
+  const content = (line: string) => `${border(glyphs.box.vertical)} ${pad(truncateToWidth(line, inner), inner)} ${border(glyphs.box.vertical)}`;
   const lines: string[] = [];
   const header = [options.header, options.headerMeta].filter(Boolean).join(" · ") || undefined;
   lines.push(bar(glyphs.box.topLeft, glyphs.box.topRight, header));
